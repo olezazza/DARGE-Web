@@ -1,0 +1,259 @@
+@model Darge.Web.Models.Project
+
+@{
+    ViewData["Title"] = Model.PlantName;
+
+    int completed =
+        Model.Tasks.Count(
+            t => t.IsCompleted
+        );
+
+    double progress =
+        Model.Tasks.Count == 0
+            ? 0
+            : (double)completed /
+              Model.Tasks.Count *
+              100;
+}
+
+<div class="container mt-5">
+
+    <a asp-action="Index">
+        ← My Projects
+    </a>
+
+
+    <div class="mt-4 mb-5">
+
+        <h1>
+            @Model.PlantName
+        </h1>
+
+        <p>
+            <strong>Location:</strong>
+            @Model.Location
+        </p>
+
+        <p>
+            <strong>Soil:</strong>
+            @Model.SoilType
+        </p>
+
+        <p>
+            <strong>Space:</strong>
+            @Model.Space m²
+        </p>
+
+
+        <p>
+            <strong>Progress:</strong>
+            @completed / @Model.Tasks.Count tasks
+        </p>
+
+
+        <div class="progress">
+
+            <div
+                class="progress-bar bg-success"
+                style="width: @progress%">
+
+                @Math.Round(progress)%
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <hr />
+
+
+    <h2 class="mt-4">
+        Tasks
+    </h2>
+
+
+    @if (Model.Tasks.Count == 0)
+    {
+        <p>
+            No tasks yet.
+        </p>
+    }
+
+
+    @foreach (var task in Model.Tasks)
+    {
+        <div class="card mb-3">
+
+            <div class="card-body">
+
+                <div class="d-flex justify-content-between">
+
+                    <div>
+
+                        <h5>
+                            @if (task.IsCompleted)
+                            {
+                                <span>✅</span>
+                            }
+
+                            @task.TaskName
+                        </h5>
+
+
+                        <p>
+                            @task.TaskDescription
+                        </p>
+
+
+                        <small>
+
+                            @task.TaskLevel
+                            ·
+                            @task.XpReward XP
+
+                        </small>
+
+                    </div>
+
+
+                    <div>
+
+                        @if (!task.IsCompleted)
+                        {
+                            <form
+                                asp-action="CompleteTask"
+                                method="post"
+                                class="d-inline">
+
+                                <input
+                                    type="hidden"
+                                    name="taskId"
+                                    value="@task.Id" />
+
+                                <input
+                                    type="hidden"
+                                    name="projectId"
+                                    value="@Model.Id" />
+
+                                <button
+                                    class="btn btn-success btn-sm">
+
+                                    Complete
+
+                                </button>
+
+                            </form>
+                        }
+
+
+                        <form
+                            asp-action="DeleteTask"
+                            method="post"
+                            class="d-inline">
+
+                            <input
+                                type="hidden"
+                                name="taskId"
+                                value="@task.Id" />
+
+                            <input
+                                type="hidden"
+                                name="projectId"
+                                value="@Model.Id" />
+
+                            <button
+                                class="btn btn-outline-danger btn-sm">
+
+                                Delete
+
+                            </button>
+
+                        </form>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    }
+
+
+    <hr class="my-5" />
+
+
+    <h3>
+        Add Task
+    </h3>
+
+
+    <form
+        asp-action="AddTask"
+        method="post"
+        class="mt-3">
+
+
+        <input
+            type="hidden"
+            name="projectId"
+            value="@Model.Id" />
+
+
+        <div class="mb-3">
+
+            <input
+                name="taskName"
+                class="form-control"
+                placeholder="Task name"
+                required />
+
+        </div>
+
+
+        <div class="mb-3">
+
+            <textarea
+                name="taskDescription"
+                class="form-control"
+                placeholder="Description">
+            </textarea>
+
+        </div>
+
+
+        <div class="mb-3">
+
+            <select
+                name="taskLevel"
+                class="form-select">
+
+                <option value="Easy">
+                    Easy · 10 XP
+                </option>
+
+                <option value="Medium">
+                    Medium · 20 XP
+                </option>
+
+                <option value="Hard">
+                    Hard · 30 XP
+                </option>
+
+            </select>
+
+        </div>
+
+
+        <button
+            class="btn btn-success">
+
+            Add Task
+
+        </button>
+
+    </form>
+
+</div>

@@ -1,0 +1,73 @@
+@model Darge.Web.Models.DashboardViewModel
+
+@{
+    ViewData["Title"] = "Profile";
+}
+
+<div class="container mt-5"
+     style="max-width: 700px;">
+
+    <h1>
+        @Model.Username
+    </h1>
+
+
+    <hr />
+
+
+    <h3>
+        @Model.Xp XP
+    </h3>
+
+
+    <p>
+        Projects:
+        @Model.ProjectCount
+    </p>
+
+
+    <p>
+        Tasks completed:
+        @Model.CompletedTasks /
+        @Model.TotalTasks
+    </p>
+
+
+    <hr />
+
+
+    <h3>
+        Achievements
+    </h3>
+
+
+    @if (Model.Achievements.Count == 0)
+    {
+        <p>
+            No achievements yet.
+        </p>
+    }
+    else
+    {
+        @foreach (
+            string achievement
+            in Model.Achievements
+        )
+        {
+            <div class="alert alert-success">
+
+                🏆 @achievement
+
+            </div>
+        }
+    }
+
+
+    <a asp-action="Index"
+       class="btn btn-outline-secondary">
+
+        Back to Dashboard
+
+    </a>
+
+</div>

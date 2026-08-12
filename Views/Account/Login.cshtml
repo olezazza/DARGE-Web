@@ -1,0 +1,88 @@
+@{
+    ViewData["Title"] = "Sign In";
+}
+
+<div class="auth-page">
+
+    <div class="auth-card">
+
+        <a asp-controller="Home"
+           asp-action="Index"
+           class="auth-logo">
+            DARGE
+        </a>
+
+        <h1>Welcome back</h1>
+
+        <p class="auth-subtitle">
+            Continue growing.
+        </p>
+
+
+        @if (ViewBag.Message != null)
+        {
+            <div class="alert alert-success">
+                @ViewBag.Message
+            </div>
+        }
+
+        @if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger">
+        @ViewBag.Error
+    </div>
+}
+
+        <form asp-controller="Account"
+              asp-action="Login"
+              method="post">
+
+            <div class="mb-3">
+                <label class="form-label">
+                    Username
+                </label>
+
+                <input
+                    type="text"
+                    name="username"
+                    class="form-control"
+                    placeholder="Your username"
+                    required />
+            </div>
+
+
+            <div class="mb-4">
+                <label class="form-label">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    name="password"
+                    class="form-control"
+                    placeholder="Your password"
+                    required />
+            </div>
+
+
+            <button
+                type="submit"
+                class="btn btn-success w-100">
+                Sign in
+            </button>
+
+        </form>
+
+
+        <p class="auth-bottom">
+            Don't have an account?
+
+            <a asp-controller="Account"
+               asp-action="Register">
+                Create one
+            </a>
+        </p>
+
+    </div>
+
+</div>

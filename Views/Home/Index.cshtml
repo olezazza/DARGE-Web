@@ -1,0 +1,60 @@
+﻿@{
+    ViewData["Title"] = "DARGE";
+}
+
+<section class="hero">
+    <div class="hero-content">
+        <span class="hero-badge">🌱 Grow smarter</span>
+
+        <h1>Turn your garden into a project.</h1>
+
+        <p>
+            DARGE helps you plan what to grow, track tasks,
+            build experience, and stay on top of every project.
+        </p>
+
+        <div class="hero-buttons">
+            <a asp-controller="Account"
+               asp-action="Register"
+               class="btn btn-success btn-lg">
+                Get Started
+            </a>
+
+            <a asp-controller="Account"
+               asp-action="Login"
+               class="btn btn-outline-dark btn-lg">
+                Sign In
+            </a>
+        </div>
+    </div>
+</section>
+
+
+<section class="features">
+    <div class="feature-card">
+        <div class="feature-icon">🌿</div>
+        <h3>Growing Projects</h3>
+        <p>
+            Create a project for every plant you're growing
+            and keep everything organized.
+        </p>
+    </div>
+
+    <div class="feature-card">
+        <div class="feature-icon">✅</div>
+        <h3>Tasks & Progress</h3>
+        <p>
+            Keep track of what needs to be done and watch
+            your project move forward.
+        </p>
+    </div>
+
+    <div class="feature-card">
+        <div class="feature-icon">🏆</div>
+        <h3>XP & Achievements</h3>
+        <p>
+            Complete tasks, earn XP and build your
+            gardening profile.
+        </p>
+    </div>
+</section>

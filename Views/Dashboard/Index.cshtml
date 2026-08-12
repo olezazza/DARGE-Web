@@ -1,0 +1,103 @@
+@model Darge.Web.Models.DashboardViewModel
+
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="container mt-5">
+
+    <h1>
+        Hey, @Model.Username 🌱
+    </h1>
+
+    <p>
+        Here's what's happening with your garden.
+    </p>
+
+
+    <div class="row mt-4">
+
+        <div class="col-md-4">
+
+            <div class="card">
+                <div class="card-body">
+
+                    <h6>XP</h6>
+
+                    <h2>
+                        @Model.Xp
+                    </h2>
+
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="card">
+                <div class="card-body">
+
+                    <h6>Projects</h6>
+
+                    <h2>
+                        @Model.ProjectCount
+                    </h2>
+
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="col-md-4">
+
+            <div class="card">
+                <div class="card-body">
+
+                    <h6>Tasks</h6>
+
+                    <h2>
+                        @Model.CompletedTasks /
+                        @Model.TotalTasks
+                    </h2>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="mt-5">
+
+        <a asp-controller="Projects"
+           asp-action="Index"
+           class="btn btn-success btn-lg">
+
+            My Projects
+
+        </a>
+
+
+        <a asp-controller="Projects"
+           asp-action="Create"
+           class="btn btn-outline-success btn-lg">
+
+            New Project
+
+        </a>
+
+
+        <a asp-action="Profile"
+           class="btn btn-outline-dark btn-lg">
+
+            Profile
+
+        </a>
+
+    </div>
+
+</div>
