@@ -1,0 +1,131 @@
+@{
+    ViewData["Title"] = "DARGE AI Workspace";
+    var projects = ViewBag.Projects as List<Darge.Web.Models.Project> ?? new List<Darge.Web.Models.Project>();
+    int? selectedProjectId = ViewBag.SelectedProjectId as int?;
+    var selectedProject = ViewBag.SelectedProject as Darge.Web.Models.Project;
+}
+
+<div class="container-fluid py-3">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="fw-bold mb-0">🤖 DARGE AI Workspace</h2>
+            <p class="text-muted mb-0">Ask general gardening questions or select one of your projects for contextual advice.</p>
+        </div>
+        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fs-6">
+            ✨ Powered by Gemini AI
+        </span>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
+
+        <!-- MODE SELECTION FORM -->
+        <form asp-action="Ask" method="post" id="globalAiForm">
+            @Html.AntiForgeryToken()
+
+            <div class="row g-3 align-items-center mb-4 p-3 bg-light rounded-4">
+                <div class="col-md-5">
+                    <label class="form-label fw-bold small text-uppercase text-muted mb-1">AI Assistant Mode</label>
+                    <select name="projectId" class="form-select rounded-pill" onchange="this.form.action='@Url.Action("Index", "Assistant")'; this.form.method='get'; this.form.submit();">
+                        <option value="" selected="@(selectedProjectId == null)">🌐 General Gardening Mode (All Crops)</option>
+                        @foreach (var proj in projects)
+                        {
+                            <option value="@proj.Id" selected="@(selectedProjectId == proj.Id)">🌱 Project: @proj.PlantName (@(string.IsNullOrWhiteSpace(proj.Location) ? "Garden" : proj.Location))</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-7">
+                    <div class="p-2 border rounded-3 bg-white small text-muted">
+                        @if (selectedProject != null)
+                        {
+                            <span>🎯 <strong>Context Loaded:</strong> @selectedProject.PlantName (Space: @selectedProject.Space m², Tasks: @selectedProject.Tasks.Count(t => t.IsCompleted)/@selectedProject.Tasks.Count completed)</span>
+                        }
+                        else
+                        {
+                            <span>🌐 <strong>General Mode:</strong> Ask any general horticultural, plant selection, or seasonal gardening question.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHAT / ANSWER DISPLAY CONTAINER -->
+            @if (ViewBag.Error != null)
+            {
+                <div class="alert alert-danger rounded-3 mb-4">
+                    <strong>Error:</strong> @ViewBag.Error
+                </div>
+            }
+
+            @if (ViewBag.LastQuestion != null)
+            {
+                <!-- QUESTION BUBBLE -->
+                <div class="d-flex justify-content-end mb-3">
+                    <div class="p-3 rounded-4 bg-success text-white max-w-xl shadow-sm">
+                        <p class="mb-0 fw-semibold">❓ @ViewBag.LastQuestion</p>
+                    </div>
+                </div>
+
+                <!-- ANSWER BUBBLE -->
+                <div class="d-flex align-items-start gap-3 mb-4">
+                    <div class="bg-success text-white rounded-circle p-2 fs-5">🤖</div>
+                    <div class="p-4 rounded-4 bg-light border text-dark w-100 shadow-sm">
+                        <h5 class="fw-bold text-success-emphasis mb-3">🌱 DARGE AI Response:</h5>
+                        <div class="ai-formatted-text text-dark" style="line-height: 1.7; white-space: pre-wrap;">@ViewBag.Answer</div>
+                    </div>
+                </div>
+            }
+
+            <!-- STARTER PROMPT PILLS -->
+            <div class="mb-3">
+                <small class="text-muted fw-semibold d-block mb-2">Suggested Questions:</small>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('What vegetables are easiest to grow on a sunny balcony?')">
+                        Balcony Vegetables?
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('How do I prepare potting soil for high yields?')">
+                        Soil Preparation?
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('What natural methods control aphids and garden pests?')">
+                        Natural Pest Control?
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('How often should container plants be fertilized?')">
+                        Fertilization Tips?
+                    </button>
+                </div>
+            </div>
+
+            <!-- QUESTION INPUT BAR -->
+            <div class="input-group input-group-lg">
+                <input name="question" id="globalInput" class="form-control rounded-start-pill fs-6" placeholder="Ask DARGE AI any gardening question..." required maxlength="500" value="@ViewBag.LastQuestion" />
+                <button type="submit" class="btn btn-success rounded-end-pill px-5" id="globalSendBtn">
+                    Ask AI
+                </button>
+            </div>
+
+            <div id="globalThinking" class="d-none mt-3 p-3 bg-light border rounded-3 text-center text-muted">
+                <span class="spinner-border spinner-border-sm text-success me-2"></span>
+                DARGE AI is processing your question...
+            </div>
+        </form>
+
+    </div>
+
+</div>
+
+@section Scripts {
+    <script>
+        function setPrompt(text) {
+            document.getElementById('globalInput').value = text;
+        }
+
+        document.getElementById('globalAiForm').addEventListener('submit', function () {
+            var btn = document.getElementById('globalSendBtn');
+            var thinking = document.getElementById('globalThinking');
+            if (btn && thinking) {
+                btn.disabled = true;
+                btn.innerHTML = 'Processing...';
+                thinking.classList.remove('d-none');
+            }
+        });
+    </script>
+}

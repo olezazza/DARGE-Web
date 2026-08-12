@@ -42,6 +42,8 @@ public class DashboardController : Controller
 
     private DashboardViewModel BuildDashboard()
     {
+        AchievementRepository.CheckAchievements(UserId);
+
         List<Project> projects =
             ProjectRepository.GetProjects(
                 UserId

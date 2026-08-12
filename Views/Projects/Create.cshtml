@@ -2,103 +2,52 @@
     ViewData["Title"] = "New Project";
 }
 
-<div class="container mt-5"
-     style="max-width: 650px;">
+<div class="container py-4" style="max-width: 650px;">
 
-    <h1>New Project</h1>
+    <div class="card border-0 shadow-sm rounded-4 bg-white p-4 p-md-5">
+        <h2 class="fw-bold mb-1">🌱 Create New Project</h2>
+        <p class="text-muted mb-4">Start tracking a new plant, crop, or garden bed.</p>
 
-    <p>
-        Start growing something.
-    </p>
+        @if (ViewBag.Error != null)
+        {
+            <div class="alert alert-danger rounded-3 mb-4">
+                @ViewBag.Error
+            </div>
+        }
 
+        <form asp-action="Create" method="post">
+            @Html.AntiForgeryToken()
 
-    @if (ViewBag.Error != null)
-    {
-        <div class="alert alert-danger">
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Plant / Crop Name</label>
+                <input name="plantName" class="form-control" placeholder="e.g. Heirloom Tomatoes, Basil, Lavender" required />
+            </div>
 
-            @ViewBag.Error
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Location / Garden Bed</label>
+                <input name="location" class="form-control" placeholder="e.g. Backyard Greenhouse, South Balcony" />
+            </div>
 
-        </div>
-    }
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Soil Type</label>
+                <input name="soilType" class="form-control" placeholder="e.g. Loamy Mix, Clay-Rich, Compost-Enriched" />
+            </div>
 
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Allocated Space (m²)</label>
+                <input name="space" type="number" step="0.01" min="0.01" class="form-control" placeholder="e.g. 2.5" required />
+            </div>
 
-    <form asp-action="Create"
-          method="post">
+            <div class="d-flex gap-2">
+                <button class="btn btn-success rounded-pill px-4" type="submit">
+                    Create Project
+                </button>
 
-
-        <div class="mb-3">
-
-            <label class="form-label">
-                Plant
-            </label>
-
-            <input
-                name="plantName"
-                class="form-control"
-                required />
-
-        </div>
-
-
-        <div class="mb-3">
-
-            <label class="form-label">
-                Location
-            </label>
-
-            <input
-                name="location"
-                class="form-control" />
-
-        </div>
-
-
-        <div class="mb-3">
-
-            <label class="form-label">
-                Soil Type
-            </label>
-
-            <input
-                name="soilType"
-                class="form-control" />
-
-        </div>
-
-
-        <div class="mb-4">
-
-            <label class="form-label">
-                Space (m²)
-            </label>
-
-            <input
-                name="space"
-                type="number"
-                step="0.01"
-                min="0.01"
-                class="form-control"
-                required />
-
-        </div>
-
-
-        <button
-            class="btn btn-success"
-            type="submit">
-
-            Create Project
-
-        </button>
-
-
-        <a asp-action="Index"
-           class="btn btn-outline-secondary">
-
-            Cancel
-
-        </a>
-
-    </form>
+                <a asp-action="Index" class="btn btn-outline-secondary rounded-pill px-4">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
 
 </div>

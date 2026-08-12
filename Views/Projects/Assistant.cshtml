@@ -1,0 +1,185 @@
+@model Darge.Web.Models.Project
+
+@{
+    ViewData["Title"] = $"{Model.PlantName} AI Assistant";
+    int completed = Model.Tasks.Count(t => t.IsCompleted);
+    int total = Model.Tasks.Count;
+    double pct = total == 0 ? 0 : Math.Round((double)completed / total * 100);
+}
+
+<div class="container-fluid py-3">
+
+    <div class="mb-3 d-flex align-items-center justify-content-between">
+        <a asp-action="Details" asp-route-id="@Model.Id" class="text-decoration-none text-success fw-semibold">
+            ← Back to @Model.PlantName Details
+        </a>
+        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill">
+            🤖 Dedicated Project AI
+        </span>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- CHAT COLUMN -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4 bg-white d-flex flex-column" style="min-height: 75vh;">
+                <!-- CHAT HEADER -->
+                <div class="p-3 border-bottom d-flex align-items-center gap-2 bg-light rounded-top-4">
+                    <span class="fs-4">🌱</span>
+                    <div>
+                        <h5 class="fw-bold mb-0">DARGE AI Assistant — @Model.PlantName</h5>
+                        <small class="text-muted">Ask specific questions about watering, soil, health, or schedule.</small>
+                    </div>
+                </div>
+
+                <!-- CHAT MESSAGES BODY -->
+                <div class="card-body p-4 flex-grow-1 overflow-auto" id="chatContainer" style="max-height: 550px;">
+                    <!-- SYSTEM INITIAL GREETING -->
+                    <div class="d-flex align-items-start gap-3 mb-4">
+                        <div class="bg-success text-white rounded-circle p-2 fs-5">🤖</div>
+                        <div class="p-3 rounded-4 bg-light border text-dark max-w-xl">
+                            <p class="fw-bold mb-1">Hello! I am your AI assistant for <strong>@Model.PlantName</strong>.</p>
+                            <p class="mb-0 small text-secondary">
+                                I have full context on your <strong>@(string.IsNullOrWhiteSpace(Model.Location) ? "garden" : Model.Location)</strong> setup, soil, and your <strong>@total tasks</strong> (@completed completed). What would you like guidance on today?
+                            </p>
+                        </div>
+                    </div>
+
+                    @if (TempData["AiError"] != null)
+                    {
+                        <div class="alert alert-danger rounded-3 mb-3">
+                            @TempData["AiError"]
+                        </div>
+                    }
+
+                    @if (TempData["AiAnswer"] != null)
+                    {
+                        <!-- USER QUESTION BUBBLE -->
+                        <div class="d-flex justify-content-end mb-3">
+                            <div class="p-3 rounded-4 bg-success text-white max-w-xl shadow-sm">
+                                <p class="mb-0 fw-semibold">@TempData["AiQuestion"]</p>
+                            </div>
+                        </div>
+
+                        <!-- AI RESPONSE BUBBLE -->
+                        <div class="d-flex align-items-start gap-3 mb-4">
+                            <div class="bg-success text-white rounded-circle p-2 fs-5">🤖</div>
+                            <div class="p-3 rounded-4 bg-light border text-dark max-w-xl shadow-sm">
+                                <p class="fw-bold text-success-emphasis mb-2">🌱 DARGE AI Response:</p>
+                                <div class="ai-formatted-text text-secondary" style="line-height: 1.7; white-space: pre-wrap;">@TempData["AiAnswer"]</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- STARTER PROMPTS & CHAT INPUT -->
+                <div class="p-3 border-top bg-light rounded-bottom-4">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <small class="text-muted fw-semibold me-1">Starter prompts:</small>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('What should I do this week for @Model.PlantName?')">
+                            What should I do this week?
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('Is my project on schedule?')">
+                            Is my project on schedule?
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('What should I prepare next?')">
+                            What should I prepare next?
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('Explain my next pending task.')">
+                            Explain my next task
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('What signs of stress or pests should I watch out for?')">
+                            Check stress signs
+                        </button>
+                    </div>
+
+                    <form asp-action="AskAi" method="post" id="chatForm">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="projectId" value="@Model.Id" />
+
+                        <div class="input-group input-group-lg">
+                            <input name="question" id="chatInput" class="form-control rounded-start-pill fs-6" placeholder="Ask DARGE AI anything about this project..." required maxlength="500" />
+                            <button type="submit" class="btn btn-success rounded-end-pill px-4" id="sendBtn">
+                                Send Question
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="thinkingBox" class="d-none mt-2 text-muted small text-center">
+                        <span class="spinner-border spinner-border-sm text-success me-1"></span>
+                        DARGE AI is analyzing your project context...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT CONTEXTUAL PANEL -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-white p-4 sticky-top" style="top: 20px;">
+                <h4 class="fw-bold mb-3">📋 Project Context</h4>
+
+                <div class="p-3 bg-light rounded-3 mb-3">
+                    <h5 class="fw-bold mb-1">🌱 @Model.PlantName</h5>
+                    <p class="text-muted small mb-0">📍 <strong>Location:</strong> @(string.IsNullOrWhiteSpace(Model.Location) ? "Not specified" : Model.Location)</p>
+                    <p class="text-muted small mb-0">🪨 <strong>Soil:</strong> @(string.IsNullOrWhiteSpace(Model.SoilType) ? "Not specified" : Model.SoilType)</p>
+                    <p class="text-muted small mb-0">📐 <strong>Space:</strong> @Model.Space m²</p>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between small fw-bold mb-1">
+                        <span>Progress</span>
+                        <span>@completed / @total Tasks (@pct%)</span>
+                    </div>
+                    <div class="progress rounded-pill" style="height: 10px;">
+                        <div class="progress-bar bg-success rounded-pill" role="progressbar" style="width: @pct%"></div>
+                    </div>
+                </div>
+
+                <h5 class="fw-bold mb-2">Pending Tasks (@Model.Tasks.Count(t => !t.IsCompleted))</h5>
+                @if (!Model.Tasks.Any(t => !t.IsCompleted))
+                {
+                    <div class="p-3 bg-success-subtle text-success border border-success-subtle rounded-3 small">
+                        🎉 All tasks completed! Great job growing your crop.
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2" style="max-height: 250px; overflow-y: auto;">
+                        @foreach (var task in Model.Tasks.Where(t => !t.IsCompleted))
+                        {
+                            <div class="p-2 border rounded-3 bg-white small">
+                                <div class="fw-bold text-dark mb-1">@task.TaskName</div>
+                                <span class="badge bg-secondary-subtle text-secondary me-2">@task.TaskLevel</span>
+                                <small class="text-muted">+@task.XpReward XP</small>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+@section Scripts {
+    <script>
+        function setPrompt(text) {
+            document.getElementById('chatInput').value = text;
+        }
+
+        document.getElementById('chatForm').addEventListener('submit', function () {
+            var btn = document.getElementById('sendBtn');
+            var thinking = document.getElementById('thinkingBox');
+            btn.disabled = true;
+            btn.innerHTML = 'Thinking...';
+            thinking.classList.remove('d-none');
+        });
+
+        // Auto scroll to bottom of chat
+        var container = document.getElementById('chatContainer');
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
+    </script>
+}

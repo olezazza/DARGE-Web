@@ -13,11 +13,17 @@ public class AccountController : Controller
     [HttpGet]
     public IActionResult Register()
     {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToAction("Index", "Dashboard");
+        }
+
         return View();
     }
 
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Register(
         string username,
         string password
@@ -64,11 +70,17 @@ public class AccountController : Controller
     [HttpGet]
     public IActionResult Login()
     {
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return RedirectToAction("Index", "Dashboard");
+        }
+
         return View();
     }
 
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(
         string username,
         string password
@@ -101,6 +113,7 @@ public class AccountController : Controller
 
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(

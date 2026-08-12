@@ -1,3 +1,4 @@
+using Npgsql;
 using Darge.Web.Models;
 
 namespace Darge.Web.Data;
@@ -175,5 +176,155 @@ public static class ProjectRepository
             );
 
         return project;
+    }
+
+
+    public static Project CreateProjectWithTasks(
+        int userId,
+        string plantName,
+        string location,
+        string soilType,
+        double space,
+        IEnumerable<AiTaskPlan> tasks
+    )
+    {
+        using var connection =
+            Database.DataSource.OpenConnection();
+
+        using var transaction =
+            connection.BeginTransaction();
+
+        using var projCommand =
+            new NpgsqlCommand(
+                """
+                INSERT INTO projects
+                (user_id, plant_name, location, soil_type, space)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id;
+                """,
+                connection,
+                transaction
+            );
+
+        projCommand.Parameters.AddWithValue(userId);
+        projCommand.Parameters.AddWithValue(plantName);
+        projCommand.Parameters.AddWithValue(location ?? "");
+        projCommand.Parameters.AddWithValue(soilType ?? "");
+        projCommand.Parameters.AddWithValue(space);
+
+        int projectId = Convert.ToInt32(projCommand.ExecuteScalar());
+
+        var createdTasks = new List<ProjectTask>();
+
+        foreach (var task in tasks)
+        {
+            if (string.IsNullOrWhiteSpace(task.Title)) continue;
+
+            string level = task.Difficulty switch
+            {
+                "Easy" or "easy" => "Easy",
+                "Medium" or "medium" => "Medium",
+                "Hard" or "hard" => "Hard",
+                _ => "Easy"
+            };
+
+            int xp = level switch
+            {
+                "Easy" => 10,
+                "Medium" => 20,
+                "Hard" => 30,
+                _ => 10
+            };
+
+            using var taskCommand =
+                new NpgsqlCommand(
+                    """
+                    INSERT INTO project_tasks
+                    (project_id, task_name, task_description, task_level, xp_reward)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING id;
+                    """,
+                    connection,
+                    transaction
+                );
+
+            taskCommand.Parameters.AddWithValue(projectId);
+            taskCommand.Parameters.AddWithValue(task.Title);
+            taskCommand.Parameters.AddWithValue(task.Description ?? "");
+            taskCommand.Parameters.AddWithValue(level);
+            taskCommand.Parameters.AddWithValue(xp);
+
+            int taskId = Convert.ToInt32(taskCommand.ExecuteScalar());
+
+            createdTasks.Add(new ProjectTask
+            {
+                Id = taskId,
+                TaskName = task.Title,
+                TaskDescription = task.Description ?? "",
+                TaskLevel = level,
+                IsCompleted = false,
+                XpReward = xp
+            });
+        }
+
+        transaction.Commit();
+
+        return new Project
+        {
+            Id = projectId,
+            PlantName = plantName,
+            Location = location ?? "",
+            SoilType = soilType ?? "",
+            Space = space,
+            Tasks = createdTasks
+        };
+    }
+
+
+    public static void DeleteProject(
+        int projectId,
+        int userId
+    )
+    {
+        using var connection =
+            Database.DataSource.OpenConnection();
+
+        using var transaction =
+            connection.BeginTransaction();
+
+        using var tasksCommand =
+            new NpgsqlCommand(
+                """
+                DELETE FROM project_tasks
+                WHERE project_id = $1
+                AND project_id IN
+                (
+                    SELECT id FROM projects WHERE user_id = $2
+                );
+                """,
+                connection,
+                transaction
+            );
+
+        tasksCommand.Parameters.AddWithValue(projectId);
+        tasksCommand.Parameters.AddWithValue(userId);
+        tasksCommand.ExecuteNonQuery();
+
+        using var projectCommand =
+            new NpgsqlCommand(
+                """
+                DELETE FROM projects
+                WHERE id = $1
+                AND user_id = $2;
+                """,
+                connection,
+                transaction
+            );
+
+        projectCommand.Parameters.AddWithValue(projectId);
+        projectCommand.Parameters.AddWithValue(userId);
+        projectCommand.ExecuteNonQuery();
+
+        transaction.Commit();
     }
 }

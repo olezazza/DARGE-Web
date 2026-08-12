@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Darge.Web.Services;
 
 var builder =
     WebApplication.CreateBuilder(args);
@@ -6,6 +7,9 @@ var builder =
 
 builder.Services
     .AddControllersWithViews();
+
+builder.Services
+    .AddHttpClient<IDargeAiService, DargeAiService>();
 
 
 builder.Services
