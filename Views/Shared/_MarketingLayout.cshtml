@@ -1,0 +1,110 @@
+@inject Darge.Web.Services.ILocalizationService Loc
+
+<!DOCTYPE html>
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - DARGE AgriTech</title>
+    <script>
+        (function () {
+            var saved = localStorage.getItem('darge_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="bg-stone">
+
+    <!-- MARKETING PUBLIC TOP NAVBAR -->
+    <header class="marketing-header bg-white border-bottom sticky-top shadow-sm">
+        <div class="container py-3 d-flex justify-content-between align-items-center">
+            <a class="navbar-brand fw-bold fs-4 text-emerald d-flex align-items-center gap-2 text-decoration-none" asp-controller="Home" asp-action="Index">
+                <span class="fs-3">🌱</span>
+                <span class="tracking-tight text-slate-900 fw-bold">DARGE</span>
+            </a>
+
+            <div class="d-flex align-items-center gap-2">
+                <!-- THEME TOGGLE -->
+                <button type="button" onclick="toggleTheme()" class="btn btn-outline-secondary btn-sm rounded-pill px-3 fw-semibold" id="marketingThemeToggle">
+                    🌙 Theme
+                </button>
+
+                <!-- LANGUAGE SWITCHER -->
+                <form asp-controller="Culture" asp-action="SetLanguage" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                    <div class="btn-group btn-group-sm rounded-pill border overflow-hidden" role="group">
+                        <button type="submit" name="culture" value="en" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "en" ? "btn-emerald" : "btn-light")">
+                            🇺🇸 EN
+                        </button>
+                        <button type="submit" name="culture" value="ka" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ka" ? "btn-emerald" : "btn-light")">
+                            🇬🇪 KA
+                        </button>
+                    </div>
+                </form>
+
+                <a class="btn btn-outline-dark btn-sm rounded-pill px-3 fw-semibold" asp-controller="Account" asp-action="Login">
+                    @Loc.Get("NavSignIn")
+                </a>
+                <a class="btn btn-emerald btn-sm rounded-pill px-4 fw-bold shadow-sm" asp-controller="Account" asp-action="Register">
+                    @Loc.Get("NavGetStarted")
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main role="main">
+        @RenderBody()
+    </main>
+
+    <!-- MARKETING FOOTER -->
+    <footer class="marketing-footer bg-slate-900 text-slate-300 py-5 mt-5 border-top border-slate-800">
+        <div class="container">
+            <div class="row g-4 mb-4">
+                <div class="col-md-5">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span class="fs-3">🌱</span>
+                        <h4 class="fw-bold text-white mb-0">DARGE</h4>
+                    </div>
+                    <p class="text-slate-400 small max-w-sm mb-0">
+                        The modern AI-powered gardening & crop management platform for hobby growers, urban farmers, and plant enthusiasts.
+                    </p>
+                </div>
+                <div class="col-md-3">
+                    <h6 class="fw-bold text-white mb-3">Platform</h6>
+                    <ul class="list-unstyled text-slate-400 small mb-0 d-flex flex-column gap-2">
+                        <li><a asp-controller="Account" asp-action="Register" class="text-slate-400 text-decoration-none hover-white">Get Started</a></li>
+                        <li><a asp-controller="Account" asp-action="Login" class="text-slate-400 text-decoration-none hover-white">Sign In</a></li>
+                        <li><a asp-controller="Home" asp-action="Index" class="text-slate-400 text-decoration-none hover-white">Home</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4">
+                    <h6 class="fw-bold text-white mb-3">Languages</h6>
+                    <p class="text-slate-400 small mb-2">DARGE AI supports full English and Georgian (ქართული) natural language assistance.</p>
+                </div>
+            </div>
+            <div class="border-top border-slate-800 pt-4 d-flex justify-content-between align-items-center flex-wrap gap-2 text-slate-500 small">
+                <span>&copy; 2026 DARGE AgriTech. All rights reserved.</span>
+                <span>Smart Agriculture & AI Guidance</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+        function toggleTheme() {
+            var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', current);
+            localStorage.setItem('darge_theme', current);
+            document.cookie = "DARGE_THEME=" + current + ";path=/;max-age=31536000";
+            var btn = document.getElementById('marketingThemeToggle');
+            if (btn) btn.innerHTML = current === 'dark' ? '☀️ Light' : '🌙 Theme';
+        }
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

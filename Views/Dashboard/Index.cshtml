@@ -1,7 +1,8 @@
+@inject Darge.Web.Services.ILocalizationService Loc
 @model Darge.Web.Models.DashboardViewModel
 
 @{
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = Loc.Get("NavDashboard");
 
     // Gather pending tasks across active projects for Today's Tasks
     var todayTasks = Model.Projects
@@ -12,60 +13,60 @@
 
 <div class="container-fluid py-2">
 
-    <!-- HEADER SECTION -->
+    <!-- PAGE TITLE INSIDE CONTENT (REQ 1) -->
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
         <div>
-            <h2 class="fw-bold mb-1 text-slate-900">Welcome back, @Model.Username 👋</h2>
-            <p class="text-slate-500 mb-0">Here's your garden status, upcoming tasks, and AI insights.</p>
+            <h2 class="fw-bold mb-1 text-slate-900">@Loc.Get("WelcomeBack"), @Model.Username 👋</h2>
+            <p class="text-slate-600 mb-0">@Loc.Get("DashboardSub")</p>
         </div>
 
         <div class="d-flex align-items-center gap-2">
-            <span class="badge badge-emerald fs-6 px-3 py-2 rounded-pill">
-                ⭐ Level @Model.Level Gardener
+            <span class="badge badge-xp fs-6 px-3 py-2 rounded-pill">
+                ⭐ @Loc.Get("LevelGardener") @Model.Level
             </span>
-            <a asp-controller="Projects" asp-action="Plan" class="btn btn-outline-success rounded-pill px-3">
-                ✨ Plan with AI
+            <a asp-controller="Projects" asp-action="Plan" class="btn btn-emerald rounded-pill px-3">
+                ✨ @Loc.Get("NavPlanWithAI")
             </a>
-            <a asp-controller="Projects" asp-action="Create" class="btn btn-emerald rounded-pill px-4">
-                + New Project
+            <a asp-controller="Projects" asp-action="Create" class="btn btn-orange rounded-pill px-4">
+                + @Loc.Get("NewProject")
             </a>
         </div>
     </div>
 
-    <!-- METRICS OVERVIEW ROW -->
+    <!-- METRICS OVERVIEW ROW (SEMANTIC COLOR SURFACES) -->
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm p-3 bg-white">
-                <small class="text-uppercase fw-bold text-muted d-block mb-1">Total Experience</small>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 surface-xp h-100">
+                <small class="text-uppercase fw-bold text-xp d-block mb-1">@Loc.Get("TotalXP")</small>
                 <div class="d-flex align-items-baseline gap-2">
-                    <span class="fs-3 fw-bold text-emerald">@Model.Xp</span>
-                    <span class="text-muted small">XP</span>
+                    <span class="fs-3 fw-bold text-xp">@Model.Xp</span>
+                    <span class="text-xp small">XP</span>
                 </div>
-                <small class="text-slate-500">Level @Model.Level (@Model.XpInCurrentLevel / @Model.XpToNextLevel XP)</small>
+                <small class="text-slate-600 d-none d-sm-block">@Loc.Get("LevelGardener") @Model.Level (@Model.XpInCurrentLevel / @Model.XpToNextLevel XP)</small>
             </div>
         </div>
 
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm p-3 bg-white">
-                <small class="text-uppercase fw-bold text-muted d-block mb-1">Active Projects</small>
-                <div class="fs-3 fw-bold text-slate-900">@Model.ProjectCount</div>
-                <small class="text-slate-500">Tracked crops & beds</small>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 surface-project h-100">
+                <small class="text-uppercase fw-bold text-project d-block mb-1">@Loc.Get("ActiveProjects")</small>
+                <div class="fs-3 fw-bold text-project">@Model.ProjectCount</div>
+                <small class="text-slate-600 d-none d-sm-block">@Model.Projects.Count @Loc.Get("ActiveProjects")</small>
             </div>
         </div>
 
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm p-3 bg-white">
-                <small class="text-uppercase fw-bold text-muted d-block mb-1">Task Completion</small>
-                <div class="fs-3 fw-bold text-slate-900">@Model.CompletedTasks <span class="fs-6 text-muted">/ @Model.TotalTasks</span></div>
-                <small class="text-slate-500">@Model.TaskProgressPercent% Complete (@Model.IncompleteTasks remaining)</small>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 surface-task h-100">
+                <small class="text-uppercase fw-bold text-task d-block mb-1">@Loc.Get("TaskCompletion")</small>
+                <div class="fs-3 fw-bold text-task">@Model.CompletedTasks <span class="fs-6 text-slate-600">/ @Model.TotalTasks</span></div>
+                <small class="text-slate-600 d-none d-sm-block">@Model.TaskProgressPercent% Complete</small>
             </div>
         </div>
 
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm p-3 bg-white">
-                <small class="text-uppercase fw-bold text-muted d-block mb-1">Unlocked Badges</small>
-                <div class="fs-3 fw-bold text-amber">🏆 @Model.Achievements.Count</div>
-                <small class="text-slate-500">Gardening milestones</small>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 surface-ai h-100">
+                <small class="text-uppercase fw-bold text-ai d-block mb-1">@Loc.Get("UnlockedBadges")</small>
+                <div class="fs-3 fw-bold text-ai">🏆 @Model.Achievements.Count</div>
+                <small class="text-slate-600 d-none d-sm-block">@Loc.Get("UnlockedMilestone")</small>
             </div>
         </div>
     </div>
@@ -77,9 +78,9 @@
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm bg-white p-4 mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="fw-bold mb-0 text-slate-900">⚡ Action Items & Today's Tasks</h4>
-                    <span class="badge bg-slate-100 text-slate-600 border px-3 py-1 rounded-pill">
-                        @todayTasks.Count Pending
+                    <h4 class="fw-bold mb-0 text-slate-900">⚡ @Loc.Get("ActionItems")</h4>
+                    <span class="badge badge-task border px-3 py-1 rounded-pill">
+                        @todayTasks.Count @Loc.Get("PendingActions")
                     </span>
                 </div>
 
@@ -87,8 +88,8 @@
                 {
                     <div class="p-4 bg-slate-100 rounded-3 text-center">
                         <div class="fs-2 mb-2">🎉</div>
-                        <h5 class="fw-bold mb-1">All caught up!</h5>
-                        <p class="text-muted small mb-0">No pending tasks across your projects. You can add new tasks or generate a new AI project plan.</p>
+                        <h5 class="fw-bold mb-1 text-slate-900">@Loc.Get("AllCaughtUp")</h5>
+                        <p class="text-slate-600 small mb-0">@Loc.Get("NoPendingTasks")</p>
                     </div>
                 }
                 else
@@ -104,16 +105,19 @@
                                 _ => "bg-secondary-subtle text-secondary"
                             };
 
-                            <div class="p-3 border rounded-3 bg-white d-flex justify-content-between align-items-center flex-wrap gap-3">
+                            <div class="p-3 border rounded-3 surface-task d-flex justify-content-between align-items-center flex-wrap gap-3">
                                 <div>
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle mb-1">🌱 @item.Project.PlantName</span>
-                                    <h6 class="fw-bold text-slate-800 mb-1">@item.Task.TaskName</h6>
+                                    <span class="badge badge-emerald mb-1">🌱 @item.Project.PlantName</span>
+                                    <h6 class="fw-bold text-slate-900 mb-1">@item.Task.TaskName</h6>
                                     @if (!string.IsNullOrWhiteSpace(item.Task.TaskDescription))
                                     {
-                                        <small class="text-muted d-block mb-1">@item.Task.TaskDescription</small>
+                                        <small class="text-slate-600 d-block mb-1">@item.Task.TaskDescription</small>
                                     }
-                                    <small class="badge border @badgeClass me-2">@item.Task.TaskLevel</small>
-                                    <small class="text-emerald fw-bold">+@item.Task.XpReward XP</small>
+                                    @if (!string.IsNullOrWhiteSpace(item.Task.TaskLevel))
+                                    {
+                                        <small class="badge border @badgeClass me-2">@item.Task.TaskLevel</small>
+                                    }
+                                    <small class="text-xp fw-bold">+@item.Task.XpReward XP</small>
                                 </div>
 
                                 <div>
@@ -123,7 +127,7 @@
                                         <input type="hidden" name="projectId" value="@item.Project.Id" />
                                         <input type="hidden" name="returnUrl" value="/Dashboard" />
                                         <button type="submit" class="btn btn-emerald btn-sm rounded-pill px-3">
-                                            ✓ Mark Complete
+                                            ✓ @Loc.Get("MarkComplete")
                                         </button>
                                     </form>
                                 </div>
@@ -136,9 +140,9 @@
             <!-- ACTIVE PROJECTS PREVIEW -->
             <div class="card border-0 shadow-sm bg-white p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="fw-bold mb-0 text-slate-900">🌿 Active Projects</h4>
+                    <h4 class="fw-bold mb-0 text-slate-900">🌿 @Loc.Get("ActiveProjects")</h4>
                     <a asp-controller="Projects" asp-action="Index" class="btn btn-outline-success btn-sm rounded-pill">
-                        View All Projects (@Model.ProjectCount)
+                        @Loc.Get("ViewAllProjects") (@Model.ProjectCount)
                     </a>
                 </div>
 
@@ -146,17 +150,17 @@
                 {
                     <div class="p-4 bg-slate-100 rounded-3 text-center">
                         <div class="fs-2 mb-2">🪴</div>
-                        <h5 class="fw-bold">No active projects</h5>
-                        <p class="text-muted small mb-3">Start your garden journey by creating a manual project or AI-generated plan.</p>
+                        <h5 class="fw-bold text-slate-900">@Loc.Get("NoActiveProjects")</h5>
+                        <p class="text-slate-600 small mb-3">@Loc.Get("StartGardenJourney")</p>
                         <a asp-controller="Projects" asp-action="Plan" class="btn btn-emerald rounded-pill px-4">
-                            ✨ Plan with DARGE AI
+                            ✨ @Loc.Get("NavPlanWithAI")
                         </a>
                     </div>
                 }
                 else
                 {
                     <div class="row g-3">
-                        @foreach (var project in Model.Projects.Take(3))
+                        @foreach (var project in Model.Projects.Take(4))
                         {
                             int completed = project.Tasks.Count(t => t.IsCompleted);
                             int total = project.Tasks.Count;
@@ -164,17 +168,21 @@
                             var nextTask = project.Tasks.FirstOrDefault(t => !t.IsCompleted);
 
                             <div class="col-md-6">
-                                <div class="p-3 border rounded-3 bg-white h-100 d-flex flex-column justify-content-between">
+                                <div class="p-3 border rounded-3 surface-project h-100 d-flex flex-column justify-content-between">
                                     <div>
                                         <div class="d-flex justify-content-between align-items-start mb-2">
                                             <h5 class="fw-bold text-slate-900 mb-0">🌱 @project.PlantName</h5>
-                                            <span class="badge bg-slate-100 text-slate-700 border">@project.Space m²</span>
+                                            <span class="badge badge-project">@project.Space m²</span>
                                         </div>
-                                        <p class="text-muted small mb-2">📍 @(string.IsNullOrWhiteSpace(project.Location) ? "Unspecified location" : project.Location)</p>
+
+                                        @if (!string.IsNullOrWhiteSpace(project.Location))
+                                        {
+                                            <p class="text-slate-600 small mb-2">📍 @project.Location</p>
+                                        }
 
                                         <div class="mb-3">
-                                            <div class="d-flex justify-content-between small text-muted mb-1">
-                                                <span>Progress</span>
+                                            <div class="d-flex justify-content-between small text-slate-600 mb-1 fw-semibold">
+                                                <span>@Loc.Get("TaskCompletion")</span>
                                                 <span>@completed / @total Tasks (@pct%)</span>
                                             </div>
                                             <div class="progress rounded-pill" style="height: 6px;">
@@ -184,21 +192,21 @@
 
                                         @if (nextTask != null)
                                         {
-                                            <div class="p-2 bg-slate-100 rounded-2 small mb-3">
-                                                <span class="text-muted fw-bold">Next:</span> @nextTask.TaskName
+                                            <div class="p-2 bg-white rounded-2 small text-slate-700 mb-3 border">
+                                                <span class="text-project fw-bold">@Loc.Get("NextAction")</span> @nextTask.TaskName
                                             </div>
                                         }
-                                        else
+                                        else if (total > 0)
                                         {
-                                            <div class="p-2 bg-success-subtle text-success rounded-2 small mb-3">
-                                                ✓ All tasks completed!
+                                            <div class="p-2 bg-success-subtle text-success rounded-2 small mb-3 fw-bold">
+                                                @Loc.Get("AllTasksComplete")
                                             </div>
                                         }
                                     </div>
 
                                     <div>
-                                        <a asp-controller="Projects" asp-action="Details" asp-route-id="@project.Id" class="btn btn-outline-success w-100 btn-sm rounded-pill">
-                                            Open Project Details
+                                        <a asp-controller="Projects" asp-action="Details" asp-route-id="@project.Id" class="btn btn-outline-dark w-100 btn-sm rounded-pill">
+                                            @Loc.Get("OpenProjectDetails")
                                         </a>
                                     </div>
                                 </div>
@@ -213,56 +221,56 @@
         <div class="col-lg-4">
 
             <!-- AI INSIGHT CARD -->
-            <div class="card border-0 shadow-sm bg-white p-4 mb-4 border-start border-4 border-success">
+            <div class="card border-0 shadow-sm surface-ai p-4 mb-4">
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="fs-4">🤖</span>
-                    <h5 class="fw-bold mb-0 text-slate-900">DARGE AI Assistant</h5>
+                    <h5 class="fw-bold mb-0 text-ai">@Loc.Get("AIInsightTitle")</h5>
                 </div>
-                <p class="text-muted small mb-3">
-                    Get instant, personalized advice on watering, pest control, soil care, or garden timing.
+                <p class="text-slate-700 small mb-3">
+                    @Loc.Get("AIInsightDesc")
                 </p>
                 <a asp-controller="Assistant" asp-action="Index" class="btn btn-emerald w-100 rounded-pill py-2">
-                    Ask DARGE AI What Needs Attention →
+                    @Loc.Get("AskAIWhatNeedsAttention") →
                 </a>
             </div>
 
             <!-- GAMIFICATION & ACHIEVEMENTS WIDGET -->
             <div class="card border-0 shadow-sm bg-white p-4">
-                <h5 class="fw-bold mb-3 text-slate-900">🏆 Achievements & Level</h5>
+                <h5 class="fw-bold mb-3 text-slate-900">🏆 @Loc.Get("AchievementsLevel")</h5>
 
                 <div class="mb-3">
                     <div class="d-flex justify-content-between small fw-bold text-slate-700 mb-1">
-                        <span>Level @Model.Level Gardener</span>
+                        <span>@Loc.Get("LevelGardener") @Model.Level</span>
                         <span>@Model.XpInCurrentLevel / @Model.XpToNextLevel XP</span>
                     </div>
                     <div class="progress rounded-pill" style="height: 10px;">
-                        <div class="progress-bar progress-bar-emerald rounded-pill" role="progressbar" style="width: @Model.LevelProgress%"></div>
+                        <div class="progress-bar progress-bar-ochre rounded-pill" role="progressbar" style="width: @Model.LevelProgress%"></div>
                     </div>
                 </div>
 
                 <hr class="my-3" />
 
-                <h6 class="fw-bold mb-2 text-slate-800">Recent Milestones</h6>
+                <h6 class="fw-bold mb-2 text-slate-800">@Loc.Get("RecentMilestones")</h6>
                 @if (Model.Achievements.Count == 0)
                 {
-                    <p class="text-muted small mb-0">No achievements unlocked yet. Keep completing project tasks to earn XP!</p>
+                    <p class="text-slate-600 small mb-0">@Loc.Get("NoAchievementsUnlocked")</p>
                 }
                 else
                 {
                     <div class="d-flex flex-column gap-2">
                         @foreach (var achievement in Model.Achievements.Take(4))
                         {
-                            <div class="p-2 border rounded-3 bg-success-subtle border-success-subtle d-flex align-items-center gap-2 small">
+                            <div class="p-2 border rounded-3 surface-xp d-flex align-items-center gap-2 small">
                                 <span class="fs-5">🏆</span>
-                                <span class="fw-bold text-success-emphasis">@achievement</span>
+                                <span class="fw-bold text-xp">@achievement</span>
                             </div>
                         }
                     </div>
                 }
 
                 <div class="mt-3 text-center">
-                    <a asp-controller="Dashboard" asp-action="Profile" class="text-success small fw-bold text-decoration-none">
-                        View Full Profile & Achievements →
+                    <a asp-controller="Dashboard" asp-action="Profile" class="text-emerald small fw-bold text-decoration-none">
+                        @Loc.Get("ViewFullProfile") →
                     </a>
                 </div>
             </div>

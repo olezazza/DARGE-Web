@@ -8,18 +8,27 @@ namespace Darge.Web.Services;
 public interface IDargeAiService
 {
     Task<AiProjectPlanResponse> GenerateProjectPlanAsync(AiProjectPlanRequest request, int userId);
-    Task<string> AskProjectAssistantAsync(Project project, string question, int userId);
+    Task<ProposedActionContainer> AskProjectAssistantConversationAsync(Project project, List<AiMessage> history, string newQuestion, int userId);
+    Task<string> AskGlobalAssistantConversationAsync(List<AiMessage> history, string newQuestion, int userId);
 }
 
 public class DargeAiService : IDargeAiService
 {
     private readonly HttpClient _httpClient;
+    private readonly ILocalizationService _loc;
     private static readonly ConcurrentDictionary<int, DateTime> UserCooldowns = new();
-    private static readonly TimeSpan CooldownDuration = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan CooldownDuration = TimeSpan.FromSeconds(2);
 
-    public DargeAiService(HttpClient httpClient)
+    public DargeAiService(HttpClient httpClient, ILocalizationService loc)
     {
         _httpClient = httpClient;
+        _loc = loc;
+    }
+
+    private bool IsMockMode()
+    {
+        string? mode = Environment.GetEnvironmentVariable("DARGE_AI_MODE");
+        return string.Equals(mode, "Mock", StringComparison.OrdinalIgnoreCase);
     }
 
     private string GetApiKey()
@@ -27,7 +36,7 @@ public class DargeAiService : IDargeAiService
         string? apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new InvalidOperationException("GEMINI_API_KEY environment variable is missing. Please configure GEMINI_API_KEY.");
+            throw new InvalidOperationException("GEMINI_API_KEY environment variable is missing. Please configure GEMINI_API_KEY or set DARGE_AI_MODE=Mock for development.");
         }
         return apiKey;
     }
@@ -39,7 +48,7 @@ public class DargeAiService : IDargeAiService
         {
             if (now - lastTime < CooldownDuration)
             {
-                throw new InvalidOperationException("Please wait a few seconds before asking AI again.");
+                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
             }
         }
         UserCooldowns[userId] = now;
@@ -48,6 +57,12 @@ public class DargeAiService : IDargeAiService
     public async Task<AiProjectPlanResponse> GenerateProjectPlanAsync(AiProjectPlanRequest request, int userId)
     {
         CheckCooldown(userId);
+
+        if (IsMockMode())
+        {
+            Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Project Plan Generation.");
+            return GetMockProjectPlan(request);
+        }
 
         string apiKey = GetApiKey();
         string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={apiKey}";
@@ -63,7 +78,13 @@ public class DargeAiService : IDargeAiService
             - Experience Level: {{request.ExperienceLevel}}
             - User Goal/Notes: {{(string.IsNullOrWhiteSpace(request.Goal) ? "Edible or ornamental crop" : request.Goal.Substring(0, Math.Min(request.Goal.Length, 500)))}}
 
-            You MUST respond strictly with a single JSON object matching this schema (do NOT surround with markdown ```json backticks):
+            LANGUAGE & LOCALIZATION INSTRUCTIONS:
+            - Automatically detect the primary language of the input text (PlantName, Location, SoilType, Goal).
+            - If the user provided inputs in Georgian (ქართული) or requested Georgian output, you MUST generate all human-facing JSON string values in fluent, natural Georgian.
+            - If the user provided inputs in English, generate all string values in English.
+            - Keep difficulty strictly as "Easy", "Medium", or "Hard".
+
+            You MUST respond strictly with a single JSON object matching this schema:
             {
               "projectTitle": "String - Short title of project",
               "plantName": "String - Specific plant name",
@@ -79,37 +100,42 @@ public class DargeAiService : IDargeAiService
                 }
               ]
             }
-            Provide between 4 to 8 logical, sequential tasks for starting and maintaining this crop.
+            Provide between 4 to 8 logical tasks.
             """;
 
         var payload = new
         {
             contents = new[]
             {
-                new
-                {
-                    parts = new[]
-                    {
-                        new { text = prompt }
-                    }
-                }
+                new { parts = new[] { new { text = prompt } } }
             },
             generationConfig = new
             {
                 response_mime_type = "application/json",
                 temperature = 0.7,
-                maxOutputTokens = 2048
+                maxOutputTokens = 8192
             }
         };
 
         string jsonPayload = JsonSerializer.Serialize(payload);
         using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
         using var response = await _httpClient.PostAsync(endpoint, content);
+
+        if ((int)response.StatusCode == 429)
+        {
+            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted). Suppressing raw JSON error for user.");
+            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             string errBody = await response.Content.ReadAsStringAsync();
-            throw new Exception($"Gemini API request failed ({response.StatusCode}): {errBody}");
+            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion in response body. Suppressing raw error.");
+                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+            }
+            throw new Exception($"Gemini API error: {response.StatusCode}");
         }
 
         string responseJson = await response.Content.ReadAsStringAsync();
@@ -125,25 +151,97 @@ public class DargeAiService : IDargeAiService
         }
         catch (Exception ex)
         {
-            throw new Exception($"AI output validation error: {ex.Message}. Raw text: {rawText}");
+            throw new Exception($"AI output validation error: {ex.Message}");
         }
 
         return SanitizeAndValidatePlan(plan, request);
     }
 
-    public async Task<string> AskProjectAssistantAsync(Project project, string question, int userId)
+    public async Task<string> AskGlobalAssistantConversationAsync(List<AiMessage> history, string newQuestion, int userId)
     {
         CheckCooldown(userId);
 
-        if (string.IsNullOrWhiteSpace(question))
+        string cleanQuestion = newQuestion.Trim();
+        if (cleanQuestion.Length > 500) cleanQuestion = cleanQuestion.Substring(0, 500);
+
+        if (IsMockMode())
         {
-            return "Please ask a specific question about your project.";
+            Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Global Assistant.");
+            return GetMockGlobalResponse(cleanQuestion);
         }
 
-        string cleanQuestion = question.Trim();
-        if (cleanQuestion.Length > 500)
+        string apiKey = GetApiKey();
+        string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={apiKey}";
+
+        var contentsList = new List<object>();
+
+        string systemContext = """
+            You are DARGE AI, an expert, friendly agricultural and gardening assistant.
+            Instructions:
+            - Automatically detect the primary language of the User's latest question (e.g. Georgian ქართული vs English).
+            - You MUST respond in the EXACT SAME language as the user's latest question. If Georgian, reply entirely in natural, fluent Georgian (ქართულად).
+            - Maintain conversational continuity using the provided message history.
+            - Give practical, concise, and clear advice.
+            - If asked about chemical pesticides, provide cautious safety guidance and recommend following product label instructions and local agricultural experts.
+            """;
+
+        contentsList.Add(new { role = "user", parts = new[] { new { text = systemContext } } });
+        contentsList.Add(new { role = "model", parts = new[] { new { text = "Understood. I am DARGE AI, ready to assist in English or Georgian." } } });
+
+        foreach (var msg in history.TakeLast(10))
         {
-            cleanQuestion = cleanQuestion.Substring(0, 500);
+            string role = msg.Role == "assistant" ? "model" : "user";
+            contentsList.Add(new { role = role, parts = new[] { new { text = msg.Content } } });
+        }
+
+        contentsList.Add(new { role = "user", parts = new[] { new { text = cleanQuestion } } });
+
+        var payload = new
+        {
+            contents = contentsList,
+            generationConfig = new
+            {
+                temperature = 0.7,
+                maxOutputTokens = 4096
+            }
+        };
+
+        string jsonPayload = JsonSerializer.Serialize(payload);
+        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync(endpoint, content);
+
+        if ((int)response.StatusCode == 429)
+        {
+            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted).");
+            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            string errBody = await response.Content.ReadAsStringAsync();
+            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion.");
+                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+            }
+            throw new Exception($"Gemini API error: {response.StatusCode}");
+        }
+
+        string responseJson = await response.Content.ReadAsStringAsync();
+        return ExtractTextFromGeminiResponse(responseJson);
+    }
+
+    public async Task<ProposedActionContainer> AskProjectAssistantConversationAsync(Project project, List<AiMessage> history, string newQuestion, int userId)
+    {
+        CheckCooldown(userId);
+
+        string cleanQuestion = newQuestion.Trim();
+        if (cleanQuestion.Length > 500) cleanQuestion = cleanQuestion.Substring(0, 500);
+
+        if (IsMockMode())
+        {
+            Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Project Assistant.");
+            return GetMockProjectResponse(project, cleanQuestion);
         }
 
         string apiKey = GetApiKey();
@@ -151,63 +249,129 @@ public class DargeAiService : IDargeAiService
 
         int completedCount = project.Tasks.Count(t => t.IsCompleted);
         int totalCount = project.Tasks.Count;
-
         var taskSummaryList = project.Tasks.Select(t => $"- [{ (t.IsCompleted ? "DONE" : "PENDING") }] {t.TaskName} ({t.TaskLevel})").ToList();
         string tasksText = taskSummaryList.Count > 0 ? string.Join("\n", taskSummaryList) : "No tasks created yet.";
 
-        string systemPrompt = $"""
+        string systemPrompt = $$"""
             You are DARGE AI, an expert, friendly gardening assistant embedded inside the DARGE project management app.
             
             Current Project Context:
-            - Plant: {project.PlantName}
-            - Location: {(string.IsNullOrWhiteSpace(project.Location) ? "Not specified" : project.Location)}
-            - Soil: {(string.IsNullOrWhiteSpace(project.SoilType) ? "Not specified" : project.SoilType)}
-            - Space: {project.Space} m²
-            - Progress: {completedCount}/{totalCount} tasks completed
+            - Plant: {{project.PlantName}}
+            - Location: {{(string.IsNullOrWhiteSpace(project.Location) ? "Not specified" : project.Location)}}
+            - Soil: {{(string.IsNullOrWhiteSpace(project.SoilType) ? "Not specified" : project.SoilType)}}
+            - Space: {{project.Space}} m²
+            - Progress: {{completedCount}}/{{totalCount}} tasks completed
             - Tasks list:
-            {tasksText}
-
-            User Question:
-            "{cleanQuestion}"
+            {{tasksText}}
 
             Instructions:
-            - Provide a concise, practical, and beginner-friendly answer (150-250 words max).
-            - Focus directly on the context of this specific plant and project.
-            - If the user asks about chemical pesticides or hazardous substances, give cautious safety advice and explicitly recommend following local product label instructions and local agricultural experts.
-            - Do not claim uncertain advice is guaranteed.
+            - Automatically detect the primary language of the User Question (e.g. Georgian ქართული vs English).
+            - You MUST respond in the EXACT SAME language as the User Question. If Georgian, reply entirely in natural, fluent Georgian.
+            - If the user asks to add tasks or update project details (location, soil, space), respond conversationally AND ALSO include structured action proposals.
+            - If proposing actions, append a JSON block at the very end of your response formatted EXACTLY like this:
+            ```action
+            [
+              {
+                "actionType": "ADD_TASK",
+                "taskTitle": "Task Name Here",
+                "taskDescription": "Short description",
+                "difficulty": "Easy, Medium, or Hard",
+                "xpReward": 10
+              },
+              {
+                "actionType": "UPDATE_PROJECT_INFO",
+                "newLocation": "New Location",
+                "newSoilType": "New Soil",
+                "newSpace": 5.0
+              }
+            ]
+            ```
+            - If no changes are needed or requested, do NOT include the ```action block.
             """;
+
+        var contentsList = new List<object>();
+        contentsList.Add(new { role = "user", parts = new[] { new { text = systemPrompt } } });
+        contentsList.Add(new { role = "model", parts = new[] { new { text = $"Understood. I am assistant for {project.PlantName}." } } });
+
+        foreach (var msg in history.TakeLast(10))
+        {
+            string role = msg.Role == "assistant" ? "model" : "user";
+            contentsList.Add(new { role = role, parts = new[] { new { text = msg.Content } } });
+        }
+
+        contentsList.Add(new { role = "user", parts = new[] { new { text = cleanQuestion } } });
 
         var payload = new
         {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new[]
-                    {
-                        new { text = systemPrompt }
-                    }
-                }
-            },
+            contents = contentsList,
             generationConfig = new
             {
                 temperature = 0.7,
-                maxOutputTokens = 1024
+                maxOutputTokens = 4096
             }
         };
 
         string jsonPayload = JsonSerializer.Serialize(payload);
         using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
         using var response = await _httpClient.PostAsync(endpoint, content);
+
+        if ((int)response.StatusCode == 429)
+        {
+            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted).");
+            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             string errBody = await response.Content.ReadAsStringAsync();
-            throw new Exception($"Gemini API request failed ({response.StatusCode}): {errBody}");
+            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion.");
+                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+            }
+            throw new Exception($"Gemini API error: {response.StatusCode}");
         }
 
         string responseJson = await response.Content.ReadAsStringAsync();
-        return ExtractTextFromGeminiResponse(responseJson);
+        string rawText = ExtractTextFromGeminiResponse(responseJson);
+
+        return ParseResponseAndActions(rawText);
+    }
+
+    private ProposedActionContainer ParseResponseAndActions(string rawText)
+    {
+        var result = new ProposedActionContainer();
+
+        int actionIdx = rawText.IndexOf("```action", StringComparison.OrdinalIgnoreCase);
+        if (actionIdx >= 0)
+        {
+            string conversationalText = rawText.Substring(0, actionIdx).Trim();
+            result.UserTextResponse = conversationalText;
+
+            int endIdx = rawText.IndexOf("```", actionIdx + 9);
+            if (endIdx > actionIdx)
+            {
+                string jsonBlock = rawText.Substring(actionIdx + 9, endIdx - (actionIdx + 9)).Trim();
+                try
+                {
+                    var parsedActions = JsonSerializer.Deserialize<List<ProposedAction>>(jsonBlock, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    if (parsedActions != null)
+                    {
+                        result.Actions = parsedActions;
+                    }
+                }
+                catch {}
+            }
+        }
+        else
+        {
+            result.UserTextResponse = rawText.Trim();
+        }
+
+        return result;
     }
 
     private string ExtractTextFromGeminiResponse(string jsonResponse)
@@ -218,10 +382,19 @@ public class DargeAiService : IDargeAiService
         if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
         {
             var firstCandidate = candidates[0];
+
+            string finishReason = "UNKNOWN";
+            if (firstCandidate.TryGetProperty("finishReason", out var reasonElem))
+            {
+                finishReason = reasonElem.GetString() ?? "UNKNOWN";
+            }
+
             if (firstCandidate.TryGetProperty("content", out var contentElement) &&
                 contentElement.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
-                var text = parts[0].GetProperty("text").GetString();
+                var text = parts[0].GetProperty("text").GetString() ?? "";
+                Console.WriteLine($"[DARGE AI Diagnostic] Candidates={candidates.GetArrayLength()}, FinishReason={finishReason}, TextLength={text.Length}");
+
                 if (!string.IsNullOrWhiteSpace(text))
                 {
                     return text.Trim();
@@ -230,6 +403,107 @@ public class DargeAiService : IDargeAiService
         }
 
         throw new Exception("Unexpected response structure from Gemini API.");
+    }
+
+    private AiProjectPlanResponse GetMockProjectPlan(AiProjectPlanRequest request)
+    {
+        bool isGeorgian = ContainsGeorgian(request.PlantName ?? "") || ContainsGeorgian(request.Location ?? "");
+        string plant = !string.IsNullOrWhiteSpace(request.PlantName) ? request.PlantName : (isGeorgian ? "ორგანული პომიდორი" : "Organic Heirloom Tomatoes");
+
+        if (isGeorgian)
+        {
+            return new AiProjectPlanResponse
+            {
+                ProjectTitle = $"{plant} - AI გეგმა",
+                PlantName = plant,
+                Summary = $"მზის მოყვარული {plant}-ის მოშენების გეგმა {request.Space} მ² ფართობზე. მოიცავს ნიადაგის მომზადებას, რეგულარულ მორწყვასა და მავნებლებისგან ბუნებრივ დაცვას.",
+                Recommendations = "უზრუნველყავით მინიმუმ 6 საათი მზის სინათლე. მორწყეთ დილით ადრე ნიადაგის ძირში.",
+                Tasks = new List<AiTaskPlan>
+                {
+                    new() { Title = "ქოთნის/საწოლის ნიადაგის მომზადება", Description = "აურიეთ ორგანული კომპოსტი და პერლიტი ნიადაგის აერაციისთვის.", Difficulty = "Easy", XpReward = 10, Timing = "დღე 1" },
+                    new() { Title = "ჩითილების დარგვა და წყლით უზრუნველყოფა", Description = "დაარგეთ ჩითილები 45 სმ დაშორებით და უხვად მორწყეთ.", Difficulty = "Easy", XpReward = 10, Timing = "დღე 2" },
+                    new() { Title = "საყრდენი ჭიგოების დამონტაჟება", Description = "ჩაასობეთ საყრდენი ჯოხები მცენარის გვერდით ნაყოფის სიმძიმის დასაჭერად.", Difficulty = "Medium", XpReward = 20, Timing = "კვირა 2" },
+                    new() { Title = "ორგანული სასუქის მიწოდება", Description = "დაამატეთ თხევადი ორგანული სასუქი აზოტისა და კალიუმის ბალანსისთვის.", Difficulty = "Medium", XpReward = 20, Timing = "კვირა 4" },
+                    new() { Title = "მოსავლის აღება", Description = "მოკრიფეთ მწიფე, წითელი ნაყოფი ფრთხილად.", Difficulty = "Hard", XpReward = 30, Timing = "კვირა 8" }
+                }
+            };
+        }
+
+        return new AiProjectPlanResponse
+        {
+            ProjectTitle = $"{plant} Growth Plan",
+            PlantName = plant,
+            Summary = $"Tailored growing guide for {plant} across {request.Space} m². Designed for optimal yields using natural compost and automated care steps.",
+            Recommendations = "Provide at least 6 hours of direct sunlight. Water early morning at the base of the stems.",
+            Tasks = new List<AiTaskPlan>
+            {
+                new() { Title = "Prepare Potting Soil & Soil Bed", Description = "Mix organic compost with drainage perlite for optimal root growth.", Difficulty = "Easy", XpReward = 10, Timing = "Day 1" },
+                new() { Title = "Plant Seedlings & Initial Deep Watering", Description = "Space seedlings 45cm apart and soak root zones thoroughly.", Difficulty = "Easy", XpReward = 10, Timing = "Day 2" },
+                new() { Title = "Install Support Stakes & Cages", Description = "Secure vertical wooden stakes to support heavy fruiting branches.", Difficulty = "Medium", XpReward = 20, Timing = "Week 2" },
+                new() { Title = "Apply Organic Potassium Fertilizer", Description = "Feed with balanced liquid kelp fertilizer to encourage blooming.", Difficulty = "Medium", XpReward = 20, Timing = "Week 4" },
+                new() { Title = "Harvest Peak Fruit", Description = "Gently twist ripe fruit off vines when fully colored.", Difficulty = "Hard", XpReward = 30, Timing = "Week 8" }
+            }
+        };
+    }
+
+    private string GetMockGlobalResponse(string question)
+    {
+        bool isGeorgian = ContainsGeorgian(question);
+
+        if (isGeorgian)
+        {
+            return $"🧪 [AI Mock Mode Active]\n\n" +
+                   $"გმადლობთ კითხვისთვის: \"{question}\"\n\n" +
+                   $"მცენარის ჯანსაღი ზრდისთვის მნიშვნელოვანია:\n" +
+                   $"1. ☀️ **მზის განათება**: უზრუნველყავით მინიმუმ 5-7 საათი პირდაპირი სინათლე.\n" +
+                   $"2. 💧 **მორწყვის რეჟიმი**: შეამოწმეთ ნიადაგის ტენიანობა თითის 2-3 სმ-ით ჩაყოფით.\n" +
+                   $"3. 🪨 **დრენაჟი**: გამოიყენეთ ხვრელებიანი ქოთნები ფესვების ლპობის თავიდან ასაცილებლად.";
+        }
+
+        return $"🧪 [AI Mock Mode Active]\n\n" +
+               $"Thank you for asking: \"{question}\"\n\n" +
+               $"Here are essential guidelines for optimal plant growth:\n" +
+               $"1. ☀️ **Sunlight Exposure**: Ensure 5–7 hours of direct sunlight daily.\n" +
+               $"2. 💧 **Watering Discipline**: Check topsoil moisture before watering; avoid soggy roots.\n" +
+               $"3. 🪨 **Soil Drainage**: Ensure pots have adequate drainage holes and aeration perlite.";
+    }
+
+    private ProposedActionContainer GetMockProjectResponse(Project project, string question)
+    {
+        bool isGeorgian = ContainsGeorgian(question);
+        var container = new ProposedActionContainer();
+
+        if (isGeorgian)
+        {
+            container.UserTextResponse = $"🧪 [AI Mock Mode Active]\n\n" +
+                $"პროექტის \"{project.PlantName}\" მიმდინარე სტატუსი გაანალიზებულია.\n" +
+                $"თქვენი კითხვის საფუძველზე შემოთავაზებულია ახალი დავალების დამატება პროექტში.";
+        }
+        else
+        {
+            container.UserTextResponse = $"🧪 [AI Mock Mode Active]\n\n" +
+                $"Analyzed current status for project \"{project.PlantName}\".\n" +
+                $"Based on your request, I propose adding a recommended task to your project workflow.";
+        }
+
+        container.Actions = new List<ProposedAction>
+        {
+            new ProposedAction
+            {
+                ActionType = "ADD_TASK",
+                TaskTitle = isGeorgian ? "ჩრდილის ბადის დამონტაჟება" : "Install Afternoon Shade Net",
+                TaskDescription = isGeorgian ? "დაიცავით ფოთლები შუადღის მზის დამწვრობისგან." : "Protect foliage during peak afternoon sunlight.",
+                Difficulty = "Easy",
+                XpReward = 10
+            }
+        };
+
+        return container;
+    }
+
+    private bool ContainsGeorgian(string text)
+    {
+        return text.Any(c => c >= 0x10A0 && c <= 0x10FF);
     }
 
     private AiProjectPlanResponse SanitizeAndValidatePlan(AiProjectPlanResponse plan, AiProjectPlanRequest request)

@@ -1,89 +1,63 @@
+@inject Darge.Web.Services.ILocalizationService Loc
+
 @{
-    ViewData["Title"] = "Create Account";
+    ViewData["Title"] = Loc.Get("NavRegister");
+    Layout = "_MarketingLayout";
 }
 
-<div class="auth-page">
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
 
-    <div class="auth-card">
+            <div class="card border-0 shadow-lg rounded-4 p-4 p-md-5 bg-white">
 
-        <a asp-controller="Home"
-           asp-action="Index"
-           class="auth-logo">
-            DARGE
-        </a>
+                <div class="text-center mb-4">
+                    <span class="fs-1">🌱</span>
+                    <h2 class="fw-bold text-slate-900 mb-1">Create Account</h2>
+                    <p class="text-slate-500 small">Start your AI-guided growing journey with DARGE</p>
+                </div>
 
-        <h1>Create your account</h1>
+                @if (ViewBag.Message != null)
+                {
+                    <div class="alert alert-success rounded-3 mb-3">
+                        @ViewBag.Message
+                    </div>
+                }
 
-        <p class="auth-subtitle">
-            Start your first growing project.
-        </p>
+                @if (ViewBag.Error != null)
+                {
+                    <div class="alert alert-danger rounded-3 mb-3">
+                        @ViewBag.Error
+                    </div>
+                }
 
+                <form asp-controller="Account" asp-action="Register" method="post">
+                    @Html.AntiForgeryToken()
 
-        @if (ViewBag.Message != null)
-        {
-            <div class="alert alert-success">
-                @ViewBag.Message
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-slate-700">Username</label>
+                        <input type="text" name="username" class="form-control rounded-3" placeholder="Choose a username" required autofocus />
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold text-slate-700">Password</label>
+                        <input type="password" name="password" class="form-control rounded-3" placeholder="Create a strong password" required />
+                    </div>
+
+                    <button type="submit" class="btn btn-emerald w-100 rounded-pill py-3 fw-bold fs-6">
+                        @Loc.Get("NavGetStarted") →
+                    </button>
+                </form>
+
+                <div class="text-center mt-4 pt-3 border-top text-slate-600 small">
+                    Already have an account?
+                    <a asp-controller="Account" asp-action="Login" class="text-emerald fw-bold text-decoration-none ms-1">
+                        @Loc.Get("NavSignIn")
+                    </a>
+                </div>
+
             </div>
-        }
 
-        @if (ViewBag.Error != null)
-{
-    <div class="alert alert-danger">
-        @ViewBag.Error
+        </div>
     </div>
-}
-
-        <form asp-controller="Account"
-              asp-action="Register"
-              method="post">
-            @Html.AntiForgeryToken()
-
-            <div class="mb-3">
-                <label class="form-label">
-                    Username
-                </label>
-
-                <input
-                    type="text"
-                    name="username"
-                    class="form-control"
-                    placeholder="Choose a username"
-                    required />
-            </div>
-
-
-            <div class="mb-4">
-                <label class="form-label">
-                    Password
-                </label>
-
-                <input
-                    type="password"
-                    name="password"
-                    class="form-control"
-                    placeholder="Create a password"
-                    required />
-            </div>
-
-
-            <button
-                type="submit"
-                class="btn btn-success w-100">
-                Create account
-            </button>
-
-        </form>
-
-
-        <p class="auth-bottom">
-            Already have an account?
-
-            <a asp-controller="Account"
-               asp-action="Login">
-                Sign in
-            </a>
-        </p>
-
-    </div>
-
 </div>

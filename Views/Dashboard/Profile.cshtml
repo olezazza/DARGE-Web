@@ -1,38 +1,40 @@
+@inject Darge.Web.Services.ILocalizationService Loc
 @model Darge.Web.Models.DashboardViewModel
 
 @{
-    ViewData["Title"] = "Profile & Account";
+    ViewData["Title"] = Loc.Get("ProfileTitle");
 }
 
 <div class="container-fluid py-2" style="max-width: 900px;">
 
+    <!-- PAGE TITLE INSIDE CONTENT (REQ 1) -->
     <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden mb-4">
-        <div class="p-4 text-white text-center position-relative" style="background-color: var(--sidebar-bg);">
+        <div class="p-4 text-white text-center position-relative" style="background-color: var(--c-forest);">
             <div class="fs-1 mb-2">🧑‍🌾</div>
             <h2 class="fw-bold mb-1">@Model.Username</h2>
-            <span class="badge bg-white text-emerald fs-6 rounded-pill px-3 py-1 shadow-sm">
-                ⭐ Level @Model.Level Gardener
+            <span class="badge badge-xp fs-6 rounded-pill px-3 py-1 shadow-sm">
+                ⭐ @Loc.Get("LevelGardener") @Model.Level
             </span>
         </div>
 
         <div class="card-body p-4">
             <div class="row text-center g-3 mb-4">
                 <div class="col-4">
-                    <div class="p-3 bg-slate-100 rounded-3">
-                        <small class="text-muted text-uppercase d-block fw-bold">Experience</small>
-                        <span class="fs-4 fw-bold text-emerald">@Model.Xp XP</span>
+                    <div class="p-3 surface-xp rounded-3">
+                        <small class="text-xp text-uppercase d-block fw-bold">@Loc.Get("TotalXP")</small>
+                        <span class="fs-4 fw-bold text-xp">@Model.Xp XP</span>
                     </div>
                 </div>
                 <div class="col-4">
-                    <div class="p-3 bg-slate-100 rounded-3">
-                        <small class="text-muted text-uppercase d-block fw-bold">Active Projects</small>
-                        <span class="fs-4 fw-bold text-slate-900">@Model.ProjectCount</span>
+                    <div class="p-3 surface-project rounded-3">
+                        <small class="text-project text-uppercase d-block fw-bold">@Loc.Get("ActiveProjects")</small>
+                        <span class="fs-4 fw-bold text-project">@Model.ProjectCount</span>
                     </div>
                 </div>
                 <div class="col-4">
-                    <div class="p-3 bg-slate-100 rounded-3">
-                        <small class="text-muted text-uppercase d-block fw-bold">Task Progress</small>
-                        <span class="fs-4 fw-bold text-slate-900">@Model.CompletedTasks / @Model.TotalTasks</span>
+                    <div class="p-3 surface-task rounded-3">
+                        <small class="text-task text-uppercase d-block fw-bold">@Loc.Get("TaskCompletion")</small>
+                        <span class="fs-4 fw-bold text-task">@Model.CompletedTasks / @Model.TotalTasks</span>
                     </div>
                 </div>
             </div>
@@ -40,22 +42,22 @@
             <!-- LEVEL PROGRESS BAR -->
             <div class="mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-1 small fw-semibold text-slate-700">
-                    <span>Level @Model.Level Gardener</span>
-                    <span>@Model.XpInCurrentLevel / @Model.XpToNextLevel XP to Level @(Model.Level + 1)</span>
+                    <span>@Loc.Get("LevelGardener") @Model.Level</span>
+                    <span>@Model.XpInCurrentLevel / @Model.XpToNextLevel @Loc.Get("XPToNextLevel") @(Model.Level + 1)</span>
                 </div>
                 <div class="progress rounded-pill" style="height: 10px;">
-                    <div class="progress-bar progress-bar-emerald rounded-pill" role="progressbar" style="width: @Model.LevelProgress%"></div>
+                    <div class="progress-bar progress-bar-ochre rounded-pill" role="progressbar" style="width: @Model.LevelProgress%"></div>
                 </div>
             </div>
 
             <hr class="my-4" />
 
-            <h4 class="fw-bold text-slate-900 mb-3">🏆 Achievements Unlocked (@Model.Achievements.Count)</h4>
+            <h4 class="fw-bold text-slate-900 mb-3">🏆 @Loc.Get("AchievementsUnlocked") (@Model.Achievements.Count)</h4>
 
             @if (Model.Achievements.Count == 0)
             {
                 <div class="text-center py-4 bg-slate-100 rounded-3">
-                    <p class="text-muted mb-0">No achievements unlocked yet. Create projects and complete tasks to earn milestone badges!</p>
+                    <p class="text-slate-600 mb-0">@Loc.Get("NoAchievementsUnlocked")</p>
                 </div>
             }
             else
@@ -64,11 +66,11 @@
                     @foreach (string achievement in Model.Achievements)
                     {
                         <div class="col-md-6">
-                            <div class="d-flex align-items-center p-3 border rounded-3 bg-success-subtle border-success-subtle">
+                            <div class="d-flex align-items-center p-3 border rounded-3 surface-xp">
                                 <span class="fs-3 me-3">🏆</span>
                                 <div>
-                                    <h6 class="fw-bold mb-0 text-success-emphasis">@achievement</h6>
-                                    <small class="text-success me-2">Unlocked Milestone</small>
+                                    <h6 class="fw-bold mb-0 text-xp">@Loc.Get(achievement)</h6>
+                                    <small class="text-slate-600 me-2">@Loc.Get("UnlockedMilestone")</small>
                                 </div>
                             </div>
                         </div>
@@ -80,7 +82,7 @@
 
     <div class="text-center">
         <a asp-controller="Dashboard" asp-action="Index" class="btn btn-outline-secondary rounded-pill px-4">
-            ← Back to Dashboard
+            ← @Loc.Get("BackToDashboard")
         </a>
     </div>
 

@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using Darge.Web.Data;
 using Darge.Web.Models;
 using Darge.Web.Services;
@@ -27,16 +29,58 @@ public class AssistantController : Controller
     }
 
     [HttpGet]
-    public IActionResult Index(int? projectId)
+    public IActionResult Index(int? conversationId, int? projectId)
     {
-        var projects = ProjectRepository.GetProjects(UserId);
-        ViewBag.Projects = projects;
-        ViewBag.SelectedProjectId = projectId;
+        var userProjects = ProjectRepository.GetProjects(UserId);
+        ViewBag.UserProjects = userProjects;
 
-        if (projectId.HasValue)
+        var allConversations = AiRepository.GetUserConversations(UserId);
+        ViewBag.Conversations = allConversations;
+
+        AiConversation? activeConv = null;
+
+        if (conversationId.HasValue)
         {
-            var selectedProject = projects.FirstOrDefault(p => p.Id == projectId.Value);
-            ViewBag.SelectedProject = selectedProject;
+            activeConv = AiRepository.GetConversation(conversationId.Value, UserId);
+        }
+
+        if (activeConv == null && projectId.HasValue && projectId.Value > 0)
+        {
+            var proj = ProjectRepository.GetProject(projectId.Value, UserId);
+            if (proj != null)
+            {
+                var projConvs = AiRepository.GetConversations(UserId, proj.Id);
+                if (projConvs.Count > 0)
+                {
+                    activeConv = AiRepository.GetConversation(projConvs[0].Id, UserId);
+                }
+                else
+                {
+                    activeConv = AiRepository.CreateConversation(UserId, proj.Id, $"{proj.PlantName} Chat");
+                    allConversations = AiRepository.GetUserConversations(UserId);
+                    ViewBag.Conversations = allConversations;
+                }
+            }
+        }
+
+        if (activeConv == null && allConversations.Count > 0)
+        {
+            activeConv = AiRepository.GetConversation(allConversations[0].Id, UserId);
+        }
+
+        if (activeConv == null)
+        {
+            activeConv = AiRepository.CreateConversation(UserId, null, "General Gardening Chat");
+            allConversations = AiRepository.GetUserConversations(UserId);
+            ViewBag.Conversations = allConversations;
+        }
+
+        ViewBag.ActiveConversation = activeConv;
+        ViewBag.SelectedProjectId = activeConv?.ProjectId;
+
+        if (activeConv?.ProjectId != null)
+        {
+            ViewBag.ActiveProject = ProjectRepository.GetProject(activeConv.ProjectId.Value, UserId);
         }
 
         return View();
@@ -44,65 +88,101 @@ public class AssistantController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Ask(int? projectId, string question)
+    public IActionResult NewChat(int? projectId)
     {
-        var projects = ProjectRepository.GetProjects(UserId);
-        ViewBag.Projects = projects;
-        ViewBag.SelectedProjectId = projectId;
+        int? validProjectId = null;
+        string defaultTitle = "General Gardening Chat";
+
+        if (projectId.HasValue && projectId.Value > 0)
+        {
+            var proj = ProjectRepository.GetProject(projectId.Value, UserId);
+            if (proj != null)
+            {
+                validProjectId = proj.Id;
+                defaultTitle = $"{proj.PlantName} Chat";
+            }
+        }
+
+        var conv = AiRepository.CreateConversation(UserId, validProjectId, defaultTitle);
+        return RedirectToAction("Index", new { conversationId = conv.Id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Ask(int conversationId, string question)
+    {
+        var conv = AiRepository.GetConversation(conversationId, UserId);
+        if (conv == null)
+        {
+            TempData["Error"] = "Invalid conversation session.";
+            return RedirectToAction("Index");
+        }
 
         if (string.IsNullOrWhiteSpace(question))
         {
-            ViewBag.Error = "Please enter a question for DARGE AI.";
-            return View("Index");
+            return RedirectToAction("Index", new { conversationId = conversationId });
         }
 
-        Project? projectContext = null;
-        if (projectId.HasValue && projectId.Value > 0)
+        string cleanQuestion = question.Trim();
+        if (cleanQuestion.Length > 500) cleanQuestion = cleanQuestion.Substring(0, 500);
+
+        if (conv.Messages.Count == 0 || conv.Title.EndsWith("Chat"))
         {
-            projectContext = projects.FirstOrDefault(p => p.Id == projectId.Value);
-            if (projectContext == null)
-            {
-                ViewBag.Error = "Invalid project selection.";
-                return View("Index");
-            }
+            string newTitle = cleanQuestion.Length > 35 ? cleanQuestion.Substring(0, 35) + "..." : cleanQuestion;
+            using var cmd = Database.DataSource.CreateCommand("UPDATE ai_conversations SET title = $1 WHERE id = $2 AND user_id = $3;");
+            cmd.Parameters.AddWithValue(newTitle);
+            cmd.Parameters.AddWithValue(conversationId);
+            cmd.Parameters.AddWithValue(UserId);
+            cmd.ExecuteNonQuery();
         }
 
-        ViewBag.SelectedProject = projectContext;
-        ViewBag.LastQuestion = question;
+        AiRepository.AddMessage(conversationId, "user", cleanQuestion);
 
         try
         {
-            if (projectContext != null)
+            var updatedConv = AiRepository.GetConversation(conversationId, UserId)!;
+
+            if (conv.ProjectId.HasValue)
             {
-                string answer = await _aiService.AskProjectAssistantAsync(projectContext, question, UserId);
-                ViewBag.Answer = answer;
+                var proj = ProjectRepository.GetProject(conv.ProjectId.Value, UserId);
+                if (proj != null)
+                {
+                    var result = await _aiService.AskProjectAssistantConversationAsync(proj, updatedConv.Messages, cleanQuestion, UserId);
+                    AiRepository.AddMessage(conversationId, "assistant", result.UserTextResponse);
+
+                    if (result.Actions != null && result.Actions.Count > 0)
+                    {
+                        string json = JsonSerializer.Serialize(result.Actions);
+                        string base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+                        TempData["ProposedActionsBase64"] = base64;
+                        TempData["ProposedActionsProjectId"] = proj.Id;
+                    }
+                }
+                else
+                {
+                    string responseText = await _aiService.AskGlobalAssistantConversationAsync(updatedConv.Messages, cleanQuestion, UserId);
+                    AiRepository.AddMessage(conversationId, "assistant", responseText);
+                }
             }
             else
             {
-                string generalPrompt = $"""
-                    You are DARGE AI, an expert, friendly gardening and agricultural assistant.
-                    Answer this general gardening question concisely, practical, and beginner-friendly (150-250 words max):
-                    "{question.Trim()}"
-                    If asked about chemical pesticides, provide safety warnings and recommend following local product label instructions.
-                    """;
-
-                // Use project assistant service or general prompt
-                var dummyProj = new Project
-                {
-                    PlantName = "General Gardening Query",
-                    Location = "N/A",
-                    SoilType = "N/A",
-                    Space = 0
-                };
-                string answer = await _aiService.AskProjectAssistantAsync(dummyProj, question, UserId);
-                ViewBag.Answer = answer;
+                string responseText = await _aiService.AskGlobalAssistantConversationAsync(updatedConv.Messages, cleanQuestion, UserId);
+                AiRepository.AddMessage(conversationId, "assistant", responseText);
             }
         }
         catch (Exception ex)
         {
-            ViewBag.Error = $"AI Error: {ex.Message}";
+            TempData["Error"] = ex.Message;
         }
 
-        return View("Index");
+        return RedirectToAction("Index", new { conversationId = conversationId });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteChat(int conversationId)
+    {
+        AiRepository.DeleteConversation(conversationId, UserId);
+        return RedirectToAction("Index");
     }
 }

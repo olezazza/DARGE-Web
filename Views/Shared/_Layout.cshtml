@@ -1,84 +1,149 @@
+@inject Darge.Web.Services.ILocalizationService Loc
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - DARGE AgriTech</title>
+    <script>
+        (function () {
+            var saved = localStorage.getItem('darge_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body class="app-body">
 
-@if (User.Identity?.IsAuthenticated == true)
-{
-    <!-- DESKTOP SIDEBAR -->
+    <!-- DESKTOP PERSISTENT LEFT SIDEBAR -->
     <aside class="app-sidebar d-none d-md-flex flex-column justify-content-between">
         <div>
             <div class="sidebar-brand d-flex align-items-center gap-2 p-4">
                 <span class="brand-logo">🌱</span>
                 <div>
                     <h4 class="fw-bold mb-0 text-white tracking-tight">DARGE</h4>
-                    <small class="brand-subtitle">AgriTech & AI Platform</small>
+                    <small class="brand-subtitle">AgriTech & AI</small>
                 </div>
             </div>
 
             <nav class="sidebar-nav px-3">
                 <a class="nav-item-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" asp-controller="Dashboard" asp-action="Index">
                     <span class="nav-icon">📊</span>
-                    <span class="nav-label">Dashboard</span>
+                    <span class="nav-label">@Loc.Get("NavDashboard")</span>
                 </a>
 
                 <a class="nav-item-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Projects" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" asp-controller="Projects" asp-action="Index">
                     <span class="nav-icon">📁</span>
-                    <span class="nav-label">My Projects</span>
+                    <span class="nav-label">@Loc.Get("NavMyProjects")</span>
                 </a>
 
                 <a class="nav-item-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Projects" && ViewContext.RouteData.Values["action"]?.ToString() == "Plan" ? "active" : "")" asp-controller="Projects" asp-action="Plan">
                     <span class="nav-icon">✨</span>
-                    <span class="nav-label">Plan with AI</span>
+                    <span class="nav-label">@Loc.Get("NavPlanWithAI")</span>
                 </a>
 
                 <a class="nav-item-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Assistant" ? "active" : "")" asp-controller="Assistant" asp-action="Index">
                     <span class="nav-icon">🤖</span>
-                    <span class="nav-label">DARGE AI</span>
+                    <span class="nav-label">@Loc.Get("NavDargeAI")</span>
                 </a>
             </nav>
         </div>
 
-        <!-- SIDEBAR FOOTER -->
+        <!-- LOWER SIDEBAR FOOTER (THEME TOGGLE + LANGUAGE SWITCH + PROFILE + SIGN OUT) -->
         <div class="sidebar-footer p-3 border-top border-secondary-subtle">
+            
+            <!-- THEME & LANGUAGE CONTROLS -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <small class="text-uppercase text-secondary fw-bold" style="font-size: 0.7rem; letter-spacing: 0.05em;">
+                        🌐 Language & Theme
+                    </small>
+                </div>
+
+                <div class="d-flex gap-2 mb-2">
+                    <button type="button" onclick="toggleTheme()" class="btn btn-sm btn-outline-light w-100 rounded-pill py-1 d-flex align-items-center justify-content-center gap-1" id="themeToggleBtn">
+                        🌙 Theme
+                    </button>
+                </div>
+
+                <form asp-controller="Culture" asp-action="SetLanguage" method="post" class="w-100">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                    <div class="btn-group btn-group-sm w-100 rounded-pill overflow-hidden border border-secondary" role="group">
+                        <button type="submit" name="culture" value="en" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "en" ? "btn-emerald" : "btn-dark") py-1">
+                            🇺🇸 EN
+                        </button>
+                        <button type="submit" name="culture" value="ka" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ka" ? "btn-emerald" : "btn-dark") py-1">
+                            🇬🇪 KA
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <a class="nav-item-link mb-2 @(ViewContext.RouteData.Values["action"]?.ToString() == "Profile" ? "active" : "")" asp-controller="Dashboard" asp-action="Profile">
                 <span class="nav-icon">👤</span>
-                <span class="nav-label">Profile (@User.Identity.Name)</span>
+                <span class="nav-label">@Loc.Get("NavProfile") (@User.Identity?.Name)</span>
             </a>
 
             <form asp-controller="Account" asp-action="Logout" method="post" class="w-100">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn btn-outline-light btn-sm w-100 d-flex align-items-center justify-content-center gap-2 rounded-pill py-2">
-                    <span>🚪</span> Sign Out
+                    <span>🚪</span> @Loc.Get("NavSignOut")
                 </button>
             </form>
         </div>
     </aside>
 
     <!-- MOBILE OFFCANVAS SIDEBAR -->
-    <div class="offcanvas offcanvas-start bg-dark text-white" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel">
+    <div class="offcanvas offcanvas-start bg-dark text-white" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel" style="z-index: 1055;">
         <div class="offcanvas-header border-bottom border-secondary">
             <h5 class="offcanvas-title fw-bold" id="mobileSidebarLabel">🌱 DARGE AgriTech</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column justify-content-between p-3">
             <nav class="sidebar-nav">
-                <a class="nav-item-link mb-2 text-white" asp-controller="Dashboard" asp-action="Index">📊 Dashboard</a>
-                <a class="nav-item-link mb-2 text-white" asp-controller="Projects" asp-action="Index">📁 My Projects</a>
-                <a class="nav-item-link mb-2 text-white" asp-controller="Projects" asp-action="Plan">✨ Plan with AI</a>
-                <a class="nav-item-link mb-2 text-white" asp-controller="Assistant" asp-action="Index">🤖 DARGE AI</a>
-                <a class="nav-item-link mb-2 text-white" asp-controller="Dashboard" asp-action="Profile">👤 Profile</a>
+                <a class="nav-item-link mb-2 text-white @(ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" asp-controller="Dashboard" asp-action="Index">
+                    📊 @Loc.Get("NavDashboard")
+                </a>
+                <a class="nav-item-link mb-2 text-white @(ViewContext.RouteData.Values["controller"]?.ToString() == "Projects" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" asp-controller="Projects" asp-action="Index">
+                    📁 @Loc.Get("NavMyProjects")
+                </a>
+                <a class="nav-item-link mb-2 text-white @(ViewContext.RouteData.Values["controller"]?.ToString() == "Projects" && ViewContext.RouteData.Values["action"]?.ToString() == "Plan" ? "active" : "")" asp-controller="Projects" asp-action="Plan">
+                    ✨ @Loc.Get("NavPlanWithAI")
+                </a>
+                <a class="nav-item-link mb-2 text-white @(ViewContext.RouteData.Values["controller"]?.ToString() == "Assistant" ? "active" : "")" asp-controller="Assistant" asp-action="Index">
+                    🤖 @Loc.Get("NavDargeAI")
+                </a>
+                <a class="nav-item-link mb-2 text-white @(ViewContext.RouteData.Values["action"]?.ToString() == "Profile" ? "active" : "")" asp-controller="Dashboard" asp-action="Profile">
+                    👤 @Loc.Get("NavProfile")
+                </a>
             </nav>
+
             <div>
+                <button type="button" onclick="toggleTheme()" class="btn btn-sm btn-outline-light w-100 rounded-pill mb-2" id="mobileThemeToggleBtn">
+                    🌙 Toggle Theme
+                </button>
+
+                <form asp-controller="Culture" asp-action="SetLanguage" method="post" class="mb-3">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                    <div class="btn-group btn-group-sm w-100 rounded-pill overflow-hidden border border-secondary" role="group">
+                        <button type="submit" name="culture" value="en" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "en" ? "btn-emerald" : "btn-dark")">
+                            🇺🇸 EN
+                        </button>
+                        <button type="submit" name="culture" value="ka" class="btn @(System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ka" ? "btn-emerald" : "btn-dark")">
+                            🇬🇪 KA
+                        </button>
+                    </div>
+                </form>
+
                 <form asp-controller="Account" asp-action="Logout" method="post">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-danger w-100 rounded-pill">Sign Out</button>
+                    <button type="submit" class="btn btn-danger w-100 rounded-pill py-2">
+                        🚪 @Loc.Get("NavSignOut")
+                    </button>
                 </form>
             </div>
         </div>
@@ -86,53 +151,35 @@
 
     <!-- MAIN CONTENT AREA -->
     <div class="app-main-content">
-        <!-- TOP PAGE HEADER BAR -->
-        <header class="app-top-header bg-white border-bottom px-4 py-3 d-flex align-items-center justify-content-between sticky-top">
-            <div class="d-flex align-items-center gap-3">
-                <button class="btn btn-light d-md-none border" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-controls="mobileSidebar">
-                    ☰
+        <!-- MOBILE ONLY DRAWER TOGGLE BAR -->
+        <div class="mobile-top-bar d-md-none p-3 border-bottom d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-emerald btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-controls="mobileSidebar">
+                    ☰ Menu
                 </button>
-                <h5 class="fw-bold text-slate-800 mb-0">@ViewData["Title"]</h5>
+                <span class="fw-bold fs-5">🌱 DARGE</span>
             </div>
-
-            <div class="d-flex align-items-center gap-3">
-                <a asp-controller="Projects" asp-action="Plan" class="btn btn-emerald btn-sm rounded-pill d-none d-sm-inline-flex align-items-center gap-1">
-                    <span>✨</span> Plan with AI
-                </a>
-                <span class="badge bg-slate-100 text-slate-700 border px-3 py-2 rounded-pill small fw-semibold">
-                    👤 @User.Identity.Name
-                </span>
-            </div>
-        </header>
+            <span class="badge bg-slate-100 text-slate-700 small">👤 @User.Identity?.Name</span>
+        </div>
 
         <main class="app-page-body p-4">
             @RenderBody()
         </main>
     </div>
-}
-else
-{
-    <!-- NON-AUTHENTICATED PUBLIC LAYOUT -->
-    <header class="public-header bg-white border-bottom py-3">
-        <div class="container d-flex justify-content-between align-items-center">
-            <a class="navbar-brand fw-bold fs-4 text-emerald d-flex align-items-center gap-2" asp-controller="Home" asp-action="Index">
-                <span>🌱</span> DARGE
-            </a>
-            <div class="d-flex gap-2">
-                <a class="btn btn-outline-dark btn-sm rounded-pill px-3" asp-controller="Account" asp-action="Login">Sign In</a>
-                <a class="btn btn-emerald btn-sm rounded-pill px-3" asp-controller="Account" asp-action="Register">Get Started</a>
-            </div>
-        </div>
-    </header>
 
-    <main class="py-4">
-        @RenderBody()
-    </main>
-}
-
-<script src="~/lib/jquery/dist/jquery.min.js"></script>
-<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="~/js/site.js" asp-append-version="true"></script>
-@await RenderSectionAsync("Scripts", required: false)
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+        function toggleTheme() {
+            var current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', current);
+            localStorage.setItem('darge_theme', current);
+            document.cookie = "DARGE_THEME=" + current + ";path=/;max-age=31536000";
+            var btn = document.getElementById('themeToggleBtn');
+            if (btn) btn.innerHTML = current === 'dark' ? '☀️ Light' : '🌙 Dark';
+        }
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

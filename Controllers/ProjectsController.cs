@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using Darge.Web.Data;
 using Darge.Web.Models;
@@ -188,32 +189,165 @@ public class ProjectsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AskAi(int projectId, string question)
+    public async Task<IActionResult> AskAi(int projectId, int conversationId, string question)
     {
         Project? project = ProjectRepository.GetProject(projectId, UserId);
-        if (project == null)
+        if (project == null) return NotFound();
+
+        AiConversation? conv = AiRepository.GetConversation(conversationId, UserId);
+        if (conv == null || conv.ProjectId != projectId)
         {
-            return NotFound();
+            TempData["AiError"] = "Invalid project conversation.";
+            return RedirectToAction("Assistant", new { id = projectId });
         }
 
         if (string.IsNullOrWhiteSpace(question))
         {
-            TempData["AiError"] = "Please enter a question.";
-            return RedirectToAction("Details", new { id = projectId });
+            return RedirectToAction("Assistant", new { id = projectId, conversationId = conversationId });
         }
+
+        string cleanQuestion = question.Trim();
+        if (cleanQuestion.Length > 500) cleanQuestion = cleanQuestion.Substring(0, 500);
+
+        if (conv.Messages.Count == 0 || conv.Title.EndsWith("AI Assistant"))
+        {
+            string newTitle = cleanQuestion.Length > 30 ? cleanQuestion.Substring(0, 30) + "..." : cleanQuestion;
+            using var cmd = Database.DataSource.CreateCommand("UPDATE ai_conversations SET title = $1 WHERE id = $2 AND user_id = $3;");
+            cmd.Parameters.AddWithValue(newTitle);
+            cmd.Parameters.AddWithValue(conversationId);
+            cmd.Parameters.AddWithValue(UserId);
+            cmd.ExecuteNonQuery();
+        }
+
+        AiRepository.AddMessage(conversationId, "user", cleanQuestion);
 
         try
         {
-            string answer = await _aiService.AskProjectAssistantAsync(project, question, UserId);
-            TempData["AiQuestion"] = question;
-            TempData["AiAnswer"] = answer;
+            var updatedConv = AiRepository.GetConversation(conversationId, UserId)!;
+            ProposedActionContainer result = await _aiService.AskProjectAssistantConversationAsync(project, updatedConv.Messages, cleanQuestion, UserId);
+
+            AiRepository.AddMessage(conversationId, "assistant", result.UserTextResponse);
+
+            if (result.Actions != null && result.Actions.Count > 0)
+            {
+                string json = JsonSerializer.Serialize(result.Actions);
+                string base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+                TempData["ProposedActionsBase64"] = base64;
+                TempData["ProposedActionsProjectId"] = projectId;
+            }
         }
         catch (Exception ex)
         {
             TempData["AiError"] = $"AI Assistant Error: {ex.Message}";
         }
 
-        return RedirectToAction("Details", new { id = projectId });
+        return RedirectToAction("Assistant", new { id = projectId, conversationId = conversationId });
+    }
+
+    [HttpGet]
+    public IActionResult Assistant(int id, int? conversationId)
+    {
+        Project? project = ProjectRepository.GetProject(id, UserId);
+        if (project == null)
+        {
+            return NotFound();
+        }
+
+        var conversations = AiRepository.GetConversations(UserId, id);
+        ViewBag.Conversations = conversations;
+
+        AiConversation? activeConv = null;
+        if (conversationId.HasValue)
+        {
+            activeConv = AiRepository.GetConversation(conversationId.Value, UserId);
+        }
+
+        if (activeConv == null && conversations.Count > 0)
+        {
+            activeConv = AiRepository.GetConversation(conversations[0].Id, UserId);
+        }
+
+        if (activeConv == null)
+        {
+            activeConv = AiRepository.CreateConversation(UserId, id, $"{project.PlantName} AI Assistant");
+            conversations = AiRepository.GetConversations(UserId, id);
+            ViewBag.Conversations = conversations;
+        }
+
+        ViewBag.ActiveConversation = activeConv;
+        return View(project);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult ApplyProposedActions(int projectId, int conversationId, string actionsBase64)
+    {
+        Project? project = ProjectRepository.GetProject(projectId, UserId);
+        if (project == null) return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(actionsBase64))
+        {
+            try
+            {
+                string json = Encoding.UTF8.GetString(Convert.FromBase64String(actionsBase64));
+                var actions = JsonSerializer.Deserialize<List<ProposedAction>>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (actions != null)
+                {
+                    foreach (var action in actions)
+                    {
+                        if (action.ActionType == "ADD_TASK" && !string.IsNullOrWhiteSpace(action.TaskTitle))
+                        {
+                            string level = action.Difficulty switch
+                            {
+                                "Easy" or "easy" => "Easy",
+                                "Medium" or "medium" => "Medium",
+                                "Hard" or "hard" => "Hard",
+                                _ => "Easy"
+                            };
+
+                            TaskRepository.CreateTask(
+                                projectId,
+                                UserId,
+                                action.TaskTitle.Length > 100 ? action.TaskTitle.Substring(0, 100) : action.TaskTitle,
+                                action.TaskDescription != null && action.TaskDescription.Length > 500 ? action.TaskDescription.Substring(0, 500) : (action.TaskDescription ?? ""),
+                                level
+                            );
+                        }
+                        else if (action.ActionType == "UPDATE_PROJECT_INFO")
+                        {
+                            using var connection = Database.DataSource.OpenConnection();
+                            using var cmd = connection.CreateCommand();
+                            cmd.CommandText = """
+                                UPDATE projects
+                                SET location = COALESCE(NULLIF($1, ''), location),
+                                    soil_type = COALESCE(NULLIF($2, ''), soil_type),
+                                    space = CASE WHEN $3 > 0 THEN $3 ELSE space END
+                                WHERE id = $4 AND user_id = $5;
+                                """;
+                            cmd.Parameters.AddWithValue(action.NewLocation ?? "");
+                            cmd.Parameters.AddWithValue(action.NewSoilType ?? "");
+                            cmd.Parameters.AddWithValue(action.NewSpace.HasValue ? action.NewSpace.Value : 0);
+                            cmd.Parameters.AddWithValue(projectId);
+                            cmd.Parameters.AddWithValue(UserId);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    AchievementRepository.CheckAchievements(UserId);
+                    TempData["Message"] = "Proposed changes successfully applied to project!";
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["AiError"] = $"Failed to apply changes: {ex.Message}";
+            }
+        }
+
+        return RedirectToAction("Assistant", new { id = projectId, conversationId = conversationId });
     }
 
 
@@ -280,18 +414,6 @@ public class ProjectsController : Controller
                 id = projectId
             }
         );
-    }
-
-
-    [HttpGet]
-    public IActionResult Assistant(int id)
-    {
-        Project? project = ProjectRepository.GetProject(id, UserId);
-        if (project == null)
-        {
-            return NotFound();
-        }
-        return View(project);
     }
 
 

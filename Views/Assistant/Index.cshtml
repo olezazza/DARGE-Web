@@ -1,112 +1,274 @@
+@inject Darge.Web.Services.ILocalizationService Loc
 @{
-    ViewData["Title"] = "DARGE AI Workspace";
-    var projects = ViewBag.Projects as List<Darge.Web.Models.Project> ?? new List<Darge.Web.Models.Project>();
+    ViewData["Title"] = Loc.Get("GlobalAITitle");
+    var userConversations = ViewBag.Conversations as List<Darge.Web.Models.AiConversation> ?? new List<Darge.Web.Models.AiConversation>();
+    var userProjects = ViewBag.UserProjects as List<Darge.Web.Models.Project> ?? new List<Darge.Web.Models.Project>();
+    var activeConv = ViewBag.ActiveConversation as Darge.Web.Models.AiConversation;
+    int activeConvId = activeConv?.Id ?? 0;
     int? selectedProjectId = ViewBag.SelectedProjectId as int?;
-    var selectedProject = ViewBag.SelectedProject as Darge.Web.Models.Project;
+    var activeProject = ViewBag.ActiveProject as Darge.Web.Models.Project;
+
+    bool isMock = string.Equals(Environment.GetEnvironmentVariable("DARGE_AI_MODE"), "Mock", StringComparison.OrdinalIgnoreCase);
+
+    string? proposedBase64 = TempData["ProposedActionsBase64"] as string;
+    int? proposedProjectId = TempData["ProposedActionsProjectId"] as int?;
+    List<Darge.Web.Models.ProposedAction>? proposedActions = null;
+
+    if (!string.IsNullOrWhiteSpace(proposedBase64))
+    {
+        try
+        {
+            string json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(proposedBase64));
+            proposedActions = System.Text.Json.JsonSerializer.Deserialize<List<Darge.Web.Models.ProposedAction>>(json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch {}
+    }
 }
 
-<div class="container-fluid py-3">
+<div class="container-fluid py-2">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- PAGE TITLE INSIDE CONTENT -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div>
-            <h2 class="fw-bold mb-0">🤖 DARGE AI Workspace</h2>
-            <p class="text-muted mb-0">Ask general gardening questions or select one of your projects for contextual advice.</p>
+            <h2 class="fw-bold mb-0 text-slate-900">🤖 @Loc.Get("GlobalAITitle")</h2>
+            <p class="text-slate-600 mb-0">@Loc.Get("GlobalAISub")</p>
         </div>
-        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fs-6">
-            ✨ Powered by Gemini AI
-        </span>
+        <div class="d-flex align-items-center gap-2">
+            @if (isMock)
+            {
+                <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fs-6 fw-bold">
+                    🧪 AI Mock Mode
+                </span>
+            }
+            <span class="badge badge-ai px-3 py-2 rounded-pill fs-6">
+                ✨ @Loc.Get("PoweredByGemini")
+            </span>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4 bg-white p-4">
+    <div class="row g-4">
 
-        <!-- MODE SELECTION FORM -->
-        <form asp-action="Ask" method="post" id="globalAiForm">
-            @Html.AntiForgeryToken()
+        <!-- CONVERSATIONS LIST SIDEBAR (LEFT) -->
+        <div class="col-lg-4 col-xl-3">
+            <button class="btn btn-outline-secondary btn-sm w-100 rounded-pill mb-2 d-lg-none d-flex align-items-center justify-content-between px-3" type="button" data-bs-toggle="collapse" data-bs-target="#chatHistoryCollapse" aria-expanded="false">
+                <span>💬 @(activeConv?.Title ?? "Chat History & Mode")</span>
+                <span>▼</span>
+            </button>
 
-            <div class="row g-3 align-items-center mb-4 p-3 bg-light rounded-4">
-                <div class="col-md-5">
-                    <label class="form-label fw-bold small text-uppercase text-muted mb-1">AI Assistant Mode</label>
-                    <select name="projectId" class="form-select rounded-pill" onchange="this.form.action='@Url.Action("Index", "Assistant")'; this.form.method='get'; this.form.submit();">
-                        <option value="" selected="@(selectedProjectId == null)">🌐 General Gardening Mode (All Crops)</option>
-                        @foreach (var proj in projects)
+            <div class="collapse d-lg-block" id="chatHistoryCollapse">
+                <div class="card border-0 shadow-sm bg-white p-3 rounded-4 mb-3 mb-lg-0 sticky-top" style="top: 20px;">
+                    
+                    <!-- MODE / PROJECT SELECTOR FOR NEW CHAT -->
+                    <div class="mb-3 p-3 surface-ai rounded-3">
+                        <label class="form-label fw-bold small text-uppercase text-ai mb-1">Select AI Context / Mode</label>
+                        <select id="modeProjectSelect" class="form-select form-select-sm rounded-pill" onchange="location.href='@Url.Action("Index", "Assistant")?projectId=' + this.value;">
+                            <option value="" selected="@(selectedProjectId == null)">🌐 @Loc.Get("GeneralMode")</option>
+                            @foreach (var proj in userProjects)
+                            {
+                                <option value="@proj.Id" selected="@(selectedProjectId == proj.Id)">🌱 Project: @proj.PlantName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold text-slate-900 mb-0">💬 Chat History</h5>
+                        <form asp-action="NewChat" method="post" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="projectId" value="@(selectedProjectId ?? 0)" />
+                            <button type="submit" class="btn btn-emerald btn-sm rounded-pill px-3">
+                                + New Chat
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="d-flex flex-column gap-2 overflow-auto" style="max-height: 350px;">
+                    @if (userConversations.Count == 0)
+                    {
+                        <p class="text-slate-600 small p-2 mb-0">No chat history yet.</p>
+                    }
+                    else
+                    {
+                        foreach (var conv in userConversations)
                         {
-                            <option value="@proj.Id" selected="@(selectedProjectId == proj.Id)">🌱 Project: @proj.PlantName (@(string.IsNullOrWhiteSpace(proj.Location) ? "Garden" : proj.Location))</option>
+                            bool isActive = conv.Id == activeConvId;
+                            <div class="p-2 border rounded-3 d-flex align-items-center justify-content-between @(isActive ? "surface-ai border-primary" : "bg-white card-hover")">
+                                <a asp-action="Index" asp-route-conversationId="@conv.Id" class="text-decoration-none text-slate-900 text-truncate fw-semibold me-2 flex-grow-1" style="font-size: 0.9rem;">
+                                    @(conv.ProjectId != null ? "🌱" : "💬") @conv.Title
+                                </a>
+
+                                <form asp-action="DeleteChat" method="post" onsubmit="return confirm('Delete this conversation?');" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="conversationId" value="@conv.Id" />
+                                    <button type="submit" class="btn btn-link text-danger p-0 border-0 text-decoration-none" title="Delete Chat" style="font-size: 0.85rem;">
+                                        ✕
+                                    </button>
+                                </form>
+                            </div>
                         }
-                    </select>
+                    }
                 </div>
-                <div class="col-md-7">
-                    <div class="p-2 border rounded-3 bg-white small text-muted">
-                        @if (selectedProject != null)
-                        {
-                            <span>🎯 <strong>Context Loaded:</strong> @selectedProject.PlantName (Space: @selectedProject.Space m², Tasks: @selectedProject.Tasks.Count(t => t.IsCompleted)/@selectedProject.Tasks.Count completed)</span>
-                        }
-                        else
-                        {
-                            <span>🌐 <strong>General Mode:</strong> Ask any general horticultural, plant selection, or seasonal gardening question.</span>
-                        }
+            </div>
+        </div>
+        </div>
+
+        <!-- ACTIVE CHAT TRANSCRIPT & INPUT (RIGHT) -->
+        <div class="col-lg-8 col-xl-9">
+            <div class="card border-0 shadow-sm rounded-4 bg-white d-flex flex-column" style="min-height: 75vh;">
+
+                <!-- CONVERSATION HEADER BAR -->
+                <div class="p-3 border-bottom d-flex align-items-center justify-content-between surface-ai rounded-top-4 flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fs-4">@(activeProject != null ? "🌱" : "🤖")</span>
+                        <div>
+                            <h5 class="fw-bold mb-0 text-ai">@(activeConv?.Title ?? "Gardening Chat")</h5>
+                            <small class="text-slate-600">
+                                @if (activeProject != null)
+                                {
+                                    <span>🎯 <strong>Context Loaded:</strong> @activeProject.PlantName (Space: @activeProject.Space m², Soil: @(string.IsNullOrWhiteSpace(activeProject.SoilType) ? "General" : activeProject.SoilType))</span>
+                                }
+                                else
+                                {
+                                    <span>🌐 <strong>General Mode:</strong> Asking horticultural advice in English or Georgian (ქართულად).</span>
+                                }
+                            </small>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- CHAT / ANSWER DISPLAY CONTAINER -->
-            @if (ViewBag.Error != null)
-            {
-                <div class="alert alert-danger rounded-3 mb-4">
-                    <strong>Error:</strong> @ViewBag.Error
+                <!-- CHAT MESSAGES TRANSCRIPT -->
+                <div class="card-body p-4 flex-grow-1 overflow-auto" id="chatContainer" style="max-height: 520px;">
+
+                    @if (TempData["Error"] != null)
+                    {
+                        <div class="alert alert-danger rounded-3 mb-3">
+                            @TempData["Error"]
+                        </div>
+                    }
+
+                    <!-- INITIAL GREETING -->
+                    <div class="d-flex align-items-start gap-3 mb-4">
+                        <div class="bg-emerald text-white rounded-circle p-2 fs-5">🤖</div>
+                        <div class="p-3 rounded-4 surface-ai text-dark max-w-xl">
+                            <p class="fw-bold mb-1">Welcome to DARGE AI Workspace!</p>
+                            <p class="mb-0 small text-slate-700">
+                                @if (activeProject != null)
+                                {
+                                    <span>I have full context on <strong>@activeProject.PlantName</strong>. Ask any question or request project changes.</span>
+                                }
+                                else
+                                {
+                                    <span>Ask any question about plant care, pest management, soil preparation, or balcony crops in English or Georgian.</span>
+                                }
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- PERSISTENT MESSAGES TRANSCRIPT -->
+                    @if (activeConv?.Messages != null && activeConv.Messages.Count > 0)
+                    {
+                        foreach (var msg in activeConv.Messages)
+                        {
+                            if (msg.Role == "user")
+                            {
+                                <div class="d-flex justify-content-end mb-3">
+                                    <div class="p-3 rounded-4 user-chat-bubble max-w-xl shadow-sm">
+                                        <p class="mb-0 fw-semibold">@msg.Content</p>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-start gap-3 mb-4">
+                                    <div class="bg-emerald text-white rounded-circle p-2 fs-5">🤖</div>
+                                    <div class="p-4 rounded-4 ai-chat-bubble max-w-xl shadow-sm">
+                                        <p class="fw-bold text-ai mb-2">🌱 DARGE AI Response:</p>
+                                        <div class="ai-formatted-text" style="line-height: 1.7; white-space: pre-wrap;">@msg.Content</div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+
+                    <!-- PROPOSED ACTIONS CARD IF PRESENT -->
+                    @if (proposedActions != null && proposedActions.Count > 0 && proposedProjectId.HasValue)
+                    {
+                        <div class="card border-0 shadow surface-task p-4 mb-4 rounded-4">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="fs-4">💡</span>
+                                <h5 class="fw-bold text-task mb-0">AI Proposed Project Changes</h5>
+                            </div>
+                            <p class="text-slate-700 small mb-3">DARGE AI recommends applying these updates to your project database:</p>
+
+                            <div class="d-flex flex-column gap-2 mb-3">
+                                @foreach (var act in proposedActions)
+                                {
+                                    if (act.ActionType == "ADD_TASK")
+                                    {
+                                        <div class="p-3 bg-white border rounded-3 text-slate-800">
+                                            <div class="fw-bold text-slate-900 mb-1">➕ Add Task: @act.TaskTitle</div>
+                                            @if (!string.IsNullOrWhiteSpace(act.TaskDescription))
+                                            {
+                                                <small class="text-slate-600 d-block mb-1">@act.TaskDescription</small>
+                                            }
+                                            <span class="badge badge-task">@act.Difficulty</span>
+                                            <span class="text-xp fw-bold small ms-2">+@act.XpReward XP</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            <form asp-controller="Projects" asp-action="ApplyProposedActions" method="post" class="d-flex gap-2">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="projectId" value="@proposedProjectId.Value" />
+                                <input type="hidden" name="conversationId" value="@activeConvId" />
+                                <input type="hidden" name="actionsBase64" value="@proposedBase64" />
+                                <button type="submit" class="btn btn-emerald rounded-pill px-4">
+                                    ✓ Apply Changes
+                                </button>
+                                <a asp-action="Index" asp-route-conversationId="@activeConvId" class="btn btn-outline-secondary rounded-pill px-4">
+                                    Cancel
+                                </a>
+                            </form>
+                        </div>
+                    }
+
                 </div>
-            }
 
-            @if (ViewBag.LastQuestion != null)
-            {
-                <!-- QUESTION BUBBLE -->
-                <div class="d-flex justify-content-end mb-3">
-                    <div class="p-3 rounded-4 bg-success text-white max-w-xl shadow-sm">
-                        <p class="mb-0 fw-semibold">❓ @ViewBag.LastQuestion</p>
+                <!-- STARTER PROMPTS & CHAT INPUT BAR -->
+                <div class="p-3 border-top surface-ai rounded-bottom-4">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <small class="text-slate-600 fw-semibold me-1">@Loc.Get("SuggestedQuestions")</small>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('What vegetables are easiest to grow on a sunny balcony?')">
+                            @Loc.Get("BalconyVeg")
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('How do I prepare potting soil for high yields?')">
+                            @Loc.Get("SoilPrep")
+                        </button>
+                        <button type="button" class="btn btn-sm btn-white border rounded-pill" onclick="setPrompt('What natural methods control aphids and garden pests?')">
+                            @Loc.Get("PestControl")
+                        </button>
+                    </div>
+
+                    <form asp-action="Ask" method="post" id="globalAiForm">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="conversationId" value="@activeConvId" />
+
+                        <div class="input-group input-group-lg">
+                            <input name="question" id="globalInput" class="form-control rounded-start-pill fs-6" placeholder="@Loc.Get("AskPlaceholder")" required maxlength="500" />
+                            <button type="submit" class="btn btn-emerald rounded-end-pill px-5" id="globalSendBtn">
+                                @Loc.Get("AskAIBtn")
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="globalThinking" class="d-none mt-2 text-slate-600 small text-center">
+                        <span class="spinner-border spinner-border-sm text-emerald me-1"></span>
+                        DARGE AI is processing your message...
                     </div>
                 </div>
 
-                <!-- ANSWER BUBBLE -->
-                <div class="d-flex align-items-start gap-3 mb-4">
-                    <div class="bg-success text-white rounded-circle p-2 fs-5">🤖</div>
-                    <div class="p-4 rounded-4 bg-light border text-dark w-100 shadow-sm">
-                        <h5 class="fw-bold text-success-emphasis mb-3">🌱 DARGE AI Response:</h5>
-                        <div class="ai-formatted-text text-dark" style="line-height: 1.7; white-space: pre-wrap;">@ViewBag.Answer</div>
-                    </div>
-                </div>
-            }
-
-            <!-- STARTER PROMPT PILLS -->
-            <div class="mb-3">
-                <small class="text-muted fw-semibold d-block mb-2">Suggested Questions:</small>
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('What vegetables are easiest to grow on a sunny balcony?')">
-                        Balcony Vegetables?
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('How do I prepare potting soil for high yields?')">
-                        Soil Preparation?
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('What natural methods control aphids and garden pests?')">
-                        Natural Pest Control?
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" onclick="setPrompt('How often should container plants be fertilized?')">
-                        Fertilization Tips?
-                    </button>
-                </div>
             </div>
-
-            <!-- QUESTION INPUT BAR -->
-            <div class="input-group input-group-lg">
-                <input name="question" id="globalInput" class="form-control rounded-start-pill fs-6" placeholder="Ask DARGE AI any gardening question..." required maxlength="500" value="@ViewBag.LastQuestion" />
-                <button type="submit" class="btn btn-success rounded-end-pill px-5" id="globalSendBtn">
-                    Ask AI
-                </button>
-            </div>
-
-            <div id="globalThinking" class="d-none mt-3 p-3 bg-light border rounded-3 text-center text-muted">
-                <span class="spinner-border spinner-border-sm text-success me-2"></span>
-                DARGE AI is processing your question...
-            </div>
-        </form>
+        </div>
 
     </div>
 
@@ -127,5 +289,10 @@
                 thinking.classList.remove('d-none');
             }
         });
+
+        var container = document.getElementById('chatContainer');
+        if (container) {
+            container.scrollTop = container.scrollHeight;
+        }
     </script>
 }
