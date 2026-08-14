@@ -154,7 +154,67 @@ h2 {
 }
 
 .sidebar-brand .brand-logo {
-    font-size: 1.8rem;
+    display: flex;
+    align-items: center;
+}
+
+/* BRAND LOGO STYLES */
+.brand-logo-img {
+    height: 38px;
+    width: 38px;
+    object-fit: cover;
+    border-radius: 8px;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brand-logo-img:hover {
+    transform: scale(1.03);
+}
+
+.brand-logo-sm {
+    height: 28px;
+    width: 28px;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.brand-logo-marketing {
+    height: 36px;
+    width: 36px;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.brand-logo-footer {
+    height: 32px;
+    width: 32px;
+    border-radius: 7px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.brand-logo-auth {
+    height: 64px;
+    width: 64px;
+    border-radius: 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-brand .brand-logo-img {
+    height: 42px;
+    width: 42px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .brand-logo-img {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .brand-subtitle {

@@ -14,6 +14,11 @@
     </script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/images/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="~/images/favicon.png" />
+    <link rel="icon" type="image/png" href="~/images/darge-logo.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="~/images/apple-touch-icon.png" />
+    <link rel="shortcut icon" href="~/images/favicon.png" />
 </head>
 <body class="app-body">
 
@@ -21,7 +26,7 @@
     <aside class="app-sidebar d-none d-md-flex flex-column justify-content-between">
         <div>
             <div class="sidebar-brand d-flex align-items-center gap-2 p-4">
-                <span class="brand-logo">🌱</span>
+                <span class="brand-logo"><img src="~/images/darge-logo.png" alt="DARGE Logo" class="brand-logo-img" /></span>
                 <div>
                     <h4 class="fw-bold mb-0 text-white tracking-tight">DARGE</h4>
                     <small class="brand-subtitle">AgriTech & AI</small>
@@ -99,7 +104,10 @@
     <!-- MOBILE OFFCANVAS SIDEBAR -->
     <div class="offcanvas offcanvas-start bg-dark text-white" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel" style="z-index: 1055;">
         <div class="offcanvas-header border-bottom border-secondary">
-            <h5 class="offcanvas-title fw-bold" id="mobileSidebarLabel">🌱 DARGE AgriTech</h5>
+            <h5 class="offcanvas-title fw-bold d-flex align-items-center gap-2 mb-0" id="mobileSidebarLabel">
+                <img src="~/images/darge-logo.png" alt="DARGE Logo" class="brand-logo-img brand-logo-sm" />
+                <span>DARGE AgriTech</span>
+            </h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column justify-content-between p-3">
@@ -157,7 +165,10 @@
                 <button class="btn btn-emerald btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileSidebar" aria-controls="mobileSidebar">
                     ☰ Menu
                 </button>
-                <span class="fw-bold fs-5">🌱 DARGE</span>
+                <div class="d-flex align-items-center gap-2">
+                    <img src="~/images/darge-logo.png" alt="DARGE Logo" class="brand-logo-img brand-logo-sm" />
+                    <span class="fw-bold fs-5">DARGE</span>
+                </div>
             </div>
             <span class="badge bg-slate-100 text-slate-700 small">👤 @User.Identity?.Name</span>
         </div>
