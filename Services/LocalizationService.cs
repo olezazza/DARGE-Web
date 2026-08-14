@@ -137,6 +137,7 @@ public class LocalizationService : ILocalizationService
         { "ExplainNextTask", ("Explain my next task", "აგიხსნათ შემდეგი დავალება") },
         { "CheckStressSigns", ("Check stress signs", "სტრესის ნიშნების შემოწმება") },
         { "AiQuotaExceeded", ("DARGE AI has reached its temporary usage limit. Please try again later.", "DARGE AI-მ დროებით მოხმარების ლიმიტს მიაღწია. გთხოვთ, სცადოთ მოგვიანებით.") },
+        { "AiTemporarilyUnavailable", ("DARGE AI is temporarily unavailable. Please try generating your plan again in a moment.", "DARGE AI დროებით მიუწვდომელია. გთხოვთ, ცოტა ხანში ხელახლა სცადოთ გეგმის შექმნა.") },
 
         // Landing Page Marketing
         { "LandingHeroTagline", ("AI-Powered AgriTech & Smart Gardening", "AI-ით მართული აგრო-ტექ და ჭკვიანი მებაღეობა") },

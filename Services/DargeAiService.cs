@@ -54,6 +54,153 @@ public class DargeAiService : IDargeAiService
         UserCooldowns[userId] = now;
     }
 
+    private string GetModel()
+    {
+        string? envModel = Environment.GetEnvironmentVariable("GEMINI_MODEL");
+        if (!string.IsNullOrWhiteSpace(envModel))
+        {
+            return envModel.Trim();
+        }
+        return "gemini-3.5-flash";
+    }
+
+    private static string CleanJsonContent(string rawText)
+    {
+        if (string.IsNullOrWhiteSpace(rawText)) return "";
+
+        string text = rawText.Trim();
+
+        if (text.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text.Substring(7);
+        }
+        else if (text.StartsWith("```", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text.Substring(3);
+        }
+
+        if (text.EndsWith("```", StringComparison.OrdinalIgnoreCase))
+        {
+            text = text.Substring(0, text.Length - 3);
+        }
+
+        text = text.Trim();
+
+        int startIdx = text.IndexOf('{');
+        int endIdx = text.LastIndexOf('}');
+        if (startIdx >= 0 && endIdx > startIdx)
+        {
+            text = text.Substring(startIdx, endIdx - startIdx + 1);
+        }
+
+        return text;
+    }
+
+    private async Task<string> ExecuteGeminiRequestWithRetryAsync(
+        Func<string, object> payloadFactory,
+        bool isStructuredOutput,
+        string purpose,
+        CancellationToken cancellationToken = default)
+    {
+        string apiKey = GetApiKey();
+        string model = GetModel();
+        string safeEndpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
+        string requestUri = $"{safeEndpoint}?key={apiKey}";
+        object payload = payloadFactory(model);
+        string jsonPayload = JsonSerializer.Serialize(payload);
+
+        int maxAttempts = 3;
+        var random = new Random();
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            HttpResponseMessage? response = null;
+
+            try
+            {
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                response = await _httpClient.PostAsync(requestUri, content, cancellationToken);
+                stopwatch.Stop();
+
+                int statusCode = (int)response.StatusCode;
+
+                // SUCCESS
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[DARGE AI Diagnostic] Success | Purpose={purpose} | Model={model} | Attempt={attempt}/{maxAttempts} | Duration={stopwatch.ElapsedMilliseconds}ms | Structured={isStructuredOutput}");
+                    return await response.Content.ReadAsStringAsync(cancellationToken);
+                }
+
+                // RATE LIMIT / QUOTA (429) -> DO NOT RETRY
+                if (statusCode == 429)
+                {
+                    Console.WriteLine($"[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted) | Purpose={purpose} | Model={model} | Duration={stopwatch.ElapsedMilliseconds}ms");
+                    throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+                }
+
+                string errBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                string safeErrSnippet = errBody.Length > 300 ? errBody.Substring(0, 300) + "..." : errBody;
+
+                if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) ||
+                    errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[DARGE AI Quota Diagnostic] Quota exhausted in response body | Purpose={purpose} | Model={model}");
+                    throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
+                }
+
+                // CLIENT ERRORS (400, 401, 403, 404) -> DO NOT RETRY (Non-transient)
+                if (statusCode >= 400 && statusCode < 500)
+                {
+                    Console.WriteLine($"[DARGE AI Diagnostic Error] Client Error {statusCode} ({response.ReasonPhrase}) | Purpose={purpose} | Model={model} | Endpoint={safeEndpoint} | Attempt={attempt}/{maxAttempts} | Duration={stopwatch.ElapsedMilliseconds}ms | Structured={isStructuredOutput} | Details={safeErrSnippet}");
+                    throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
+                }
+
+                // TRANSIENT SERVER ERRORS (500, 502, 503, 504) -> RETRY WITH BACKOFF & JITTER
+                Console.WriteLine($"[DARGE AI Diagnostic Warning] Transient Error {statusCode} ({response.ReasonPhrase}) | Purpose={purpose} | Model={model} | Endpoint={safeEndpoint} | Attempt={attempt}/{maxAttempts} | Duration={stopwatch.ElapsedMilliseconds}ms | Structured={isStructuredOutput} | Details={safeErrSnippet}");
+
+                if (attempt < maxAttempts)
+                {
+                    int baseDelayMs = attempt == 1 ? 1000 : 2000;
+                    int jitterMs = random.Next(-150, 250);
+                    int totalDelayMs = Math.Max(500, baseDelayMs + jitterMs);
+
+                    Console.WriteLine($"[DARGE AI Retry] Waiting {totalDelayMs}ms before attempt {attempt + 1}/{maxAttempts} for {purpose} with model {model}...");
+                    await Task.Delay(totalDelayMs, cancellationToken);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && (ex is HttpRequestException || ex is TaskCanceledException))
+            {
+                stopwatch.Stop();
+                Console.WriteLine($"[DARGE AI Diagnostic Warning] Network/Timeout ({ex.GetType().Name}: {ex.Message}) | Purpose={purpose} | Model={model} | Endpoint={safeEndpoint} | Attempt={attempt}/{maxAttempts} | Duration={stopwatch.ElapsedMilliseconds}ms");
+
+                int baseDelayMs = attempt == 1 ? 1000 : 2000;
+                int jitterMs = random.Next(-150, 250);
+                int totalDelayMs = Math.Max(500, baseDelayMs + jitterMs);
+
+                Console.WriteLine($"[DARGE AI Retry] Waiting {totalDelayMs}ms before attempt {attempt + 1}/{maxAttempts}...");
+                await Task.Delay(totalDelayMs, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                Console.WriteLine($"[DARGE AI Diagnostic Error] Unhandled Exception ({ex.GetType().Name}: {ex.Message}) | Purpose={purpose} | Model={model} | Endpoint={safeEndpoint} | Attempt={attempt}/{maxAttempts} | Duration={stopwatch.ElapsedMilliseconds}ms");
+                throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
+            }
+            finally
+            {
+                response?.Dispose();
+            }
+        }
+
+        Console.WriteLine($"[DARGE AI Diagnostic Error] All {maxAttempts} attempts failed for {purpose} with model {model}.");
+        throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
+    }
+
     public async Task<AiProjectPlanResponse> GenerateProjectPlanAsync(AiProjectPlanRequest request, int userId)
     {
         CheckCooldown(userId);
@@ -63,9 +210,6 @@ public class DargeAiService : IDargeAiService
             Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Project Plan Generation.");
             return GetMockProjectPlan(request);
         }
-
-        string apiKey = GetApiKey();
-        string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={apiKey}";
 
         string prompt = $$"""
             You are DARGE AI, an expert gardening assistant.
@@ -103,55 +247,39 @@ public class DargeAiService : IDargeAiService
             Provide between 4 to 8 logical tasks.
             """;
 
-        var payload = new
-        {
-            contents = new[]
+        string responseJson = await ExecuteGeminiRequestWithRetryAsync(
+            payloadFactory: model => new
             {
-                new { parts = new[] { new { text = prompt } } }
+                contents = new[]
+                {
+                    new { parts = new[] { new { text = prompt } } }
+                },
+                generationConfig = new
+                {
+                    responseMimeType = "application/json",
+                    temperature = 0.7,
+                    maxOutputTokens = 8192
+                }
             },
-            generationConfig = new
-            {
-                response_mime_type = "application/json",
-                temperature = 0.7,
-                maxOutputTokens = 8192
-            }
-        };
+            isStructuredOutput: true,
+            purpose: "GenerateProjectPlan"
+        );
 
-        string jsonPayload = JsonSerializer.Serialize(payload);
-        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content);
-
-        if ((int)response.StatusCode == 429)
-        {
-            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted). Suppressing raw JSON error for user.");
-            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errBody = await response.Content.ReadAsStringAsync();
-            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion in response body. Suppressing raw error.");
-                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-            }
-            throw new Exception($"Gemini API error: {response.StatusCode}");
-        }
-
-        string responseJson = await response.Content.ReadAsStringAsync();
         string rawText = ExtractTextFromGeminiResponse(responseJson);
+        string cleanJson = CleanJsonContent(rawText);
 
         AiProjectPlanResponse plan;
         try
         {
-            plan = JsonSerializer.Deserialize<AiProjectPlanResponse>(rawText, new JsonSerializerOptions
+            plan = JsonSerializer.Deserialize<AiProjectPlanResponse>(cleanJson, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
-            }) ?? throw new Exception("Failed to parse JSON response from Gemini.");
+            }) ?? throw new Exception("Deserialized plan was null.");
         }
         catch (Exception ex)
         {
-            throw new Exception($"AI output validation error: {ex.Message}");
+            Console.WriteLine($"[DARGE AI Plan Parse Error] Failed to parse JSON: {ex.Message}. Raw text: {rawText}");
+            throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
         }
 
         return SanitizeAndValidatePlan(plan, request);
@@ -169,9 +297,6 @@ public class DargeAiService : IDargeAiService
             Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Global Assistant.");
             return GetMockGlobalResponse(cleanQuestion);
         }
-
-        string apiKey = GetApiKey();
-        string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={apiKey}";
 
         var contentsList = new List<object>();
 
@@ -196,38 +321,20 @@ public class DargeAiService : IDargeAiService
 
         contentsList.Add(new { role = "user", parts = new[] { new { text = cleanQuestion } } });
 
-        var payload = new
-        {
-            contents = contentsList,
-            generationConfig = new
+        string responseJson = await ExecuteGeminiRequestWithRetryAsync(
+            payloadFactory: model => new
             {
-                temperature = 0.7,
-                maxOutputTokens = 4096
-            }
-        };
+                contents = contentsList,
+                generationConfig = new
+                {
+                    temperature = 0.7,
+                    maxOutputTokens = 4096
+                }
+            },
+            isStructuredOutput: false,
+            purpose: "GlobalAssistant"
+        );
 
-        string jsonPayload = JsonSerializer.Serialize(payload);
-        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content);
-
-        if ((int)response.StatusCode == 429)
-        {
-            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted).");
-            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errBody = await response.Content.ReadAsStringAsync();
-            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion.");
-                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-            }
-            throw new Exception($"Gemini API error: {response.StatusCode}");
-        }
-
-        string responseJson = await response.Content.ReadAsStringAsync();
         return ExtractTextFromGeminiResponse(responseJson);
     }
 
@@ -243,9 +350,6 @@ public class DargeAiService : IDargeAiService
             Console.WriteLine("[DARGE AI Diagnostic] Using Mock AI Provider (DARGE_AI_MODE=Mock) for Project Assistant.");
             return GetMockProjectResponse(project, cleanQuestion);
         }
-
-        string apiKey = GetApiKey();
-        string endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={apiKey}";
 
         int completedCount = project.Tasks.Count(t => t.IsCompleted);
         int totalCount = project.Tasks.Count;
@@ -301,40 +405,21 @@ public class DargeAiService : IDargeAiService
 
         contentsList.Add(new { role = "user", parts = new[] { new { text = cleanQuestion } } });
 
-        var payload = new
-        {
-            contents = contentsList,
-            generationConfig = new
+        string responseJson = await ExecuteGeminiRequestWithRetryAsync(
+            payloadFactory: model => new
             {
-                temperature = 0.7,
-                maxOutputTokens = 4096
-            }
-        };
+                contents = contentsList,
+                generationConfig = new
+                {
+                    temperature = 0.7,
+                    maxOutputTokens = 4096
+                }
+            },
+            isStructuredOutput: false,
+            purpose: "ProjectAssistant"
+        );
 
-        string jsonPayload = JsonSerializer.Serialize(payload);
-        using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content);
-
-        if ((int)response.StatusCode == 429)
-        {
-            Console.WriteLine("[DARGE AI Quota Diagnostic] Status=429 (Resource Exhausted).");
-            throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            string errBody = await response.Content.ReadAsStringAsync();
-            if (errBody.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) || errBody.Contains("quotaExceeded", StringComparison.OrdinalIgnoreCase))
-            {
-                Console.WriteLine("[DARGE AI Quota Diagnostic] Detected Quota Exhaustion.");
-                throw new InvalidOperationException(_loc.Get("AiQuotaExceeded"));
-            }
-            throw new Exception($"Gemini API error: {response.StatusCode}");
-        }
-
-        string responseJson = await response.Content.ReadAsStringAsync();
         string rawText = ExtractTextFromGeminiResponse(responseJson);
-
         return ParseResponseAndActions(rawText);
     }
 
@@ -392,17 +477,56 @@ public class DargeAiService : IDargeAiService
             if (firstCandidate.TryGetProperty("content", out var contentElement) &&
                 contentElement.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
-                var text = parts[0].GetProperty("text").GetString() ?? "";
-                Console.WriteLine($"[DARGE AI Diagnostic] Candidates={candidates.GetArrayLength()}, FinishReason={finishReason}, TextLength={text.Length}");
-
-                if (!string.IsNullOrWhiteSpace(text))
+                var sb = new StringBuilder();
+                foreach (var part in parts.EnumerateArray())
                 {
-                    return text.Trim();
+                    // In Gemini models with reasoning/thinking, skip internal thought parts
+                    if (part.TryGetProperty("thought", out var isThought) && isThought.GetBoolean())
+                    {
+                        continue;
+                    }
+
+                    if (part.TryGetProperty("text", out var textElem))
+                    {
+                        string? partText = textElem.GetString();
+                        if (!string.IsNullOrEmpty(partText))
+                        {
+                            sb.Append(partText);
+                        }
+                    }
+                }
+
+                string combinedText = sb.ToString().Trim();
+                Console.WriteLine($"[DARGE AI Diagnostic] Candidates={candidates.GetArrayLength()}, FinishReason={finishReason}, ExtractedTextLength={combinedText.Length}");
+
+                if (!string.IsNullOrWhiteSpace(combinedText))
+                {
+                    return combinedText;
+                }
+
+                // Fallback to first part text if thought filtering excluded everything
+                if (parts[0].TryGetProperty("text", out var firstTextElem))
+                {
+                    var text = firstTextElem.GetString() ?? "";
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return text.Trim();
+                    }
                 }
             }
         }
 
-        throw new Exception("Unexpected response structure from Gemini API.");
+        if (root.TryGetProperty("promptFeedback", out var promptFeedback))
+        {
+            if (promptFeedback.TryGetProperty("blockReason", out var blockReason))
+            {
+                Console.WriteLine($"[DARGE AI Diagnostic Warning] Prompt blocked: {blockReason.GetString()}");
+                throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
+            }
+        }
+
+        Console.WriteLine($"[DARGE AI Diagnostic Error] Unexpected response structure: {jsonResponse.Substring(0, Math.Min(jsonResponse.Length, 300))}");
+        throw new InvalidOperationException(_loc.Get("AiTemporarilyUnavailable"));
     }
 
     private AiProjectPlanResponse GetMockProjectPlan(AiProjectPlanRequest request)

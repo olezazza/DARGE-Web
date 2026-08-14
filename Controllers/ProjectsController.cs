@@ -14,10 +14,12 @@ namespace Darge.Web.Controllers;
 public class ProjectsController : Controller
 {
     private readonly IDargeAiService _aiService;
+    private readonly ILocalizationService _loc;
 
-    public ProjectsController(IDargeAiService aiService)
+    public ProjectsController(IDargeAiService aiService, ILocalizationService loc)
     {
         _aiService = aiService;
+        _loc = loc;
     }
 
     private int UserId
@@ -127,9 +129,15 @@ public class ProjectsController : Controller
             ViewBag.OriginalRequest = request;
             return View("ReviewPlan", plan);
         }
+        catch (InvalidOperationException ex)
+        {
+            ViewBag.Error = ex.Message;
+            return View("Plan", request);
+        }
         catch (Exception ex)
         {
-            ViewBag.Error = $"AI Generation Error: {ex.Message}";
+            Console.WriteLine($"[DARGE AI Plan Generation Exception] {ex}");
+            ViewBag.Error = _loc.Get("AiTemporarilyUnavailable");
             return View("Plan", request);
         }
     }
@@ -236,9 +244,14 @@ public class ProjectsController : Controller
                 TempData["ProposedActionsProjectId"] = projectId;
             }
         }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AiError"] = ex.Message;
+        }
         catch (Exception ex)
         {
-            TempData["AiError"] = $"AI Assistant Error: {ex.Message}";
+            Console.WriteLine($"[DARGE AI Assistant Exception] {ex}");
+            TempData["AiError"] = _loc.Get("AiTemporarilyUnavailable");
         }
 
         return RedirectToAction("Assistant", new { id = projectId, conversationId = conversationId });

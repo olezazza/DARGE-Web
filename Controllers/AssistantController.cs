@@ -13,10 +13,12 @@ namespace Darge.Web.Controllers;
 public class AssistantController : Controller
 {
     private readonly IDargeAiService _aiService;
+    private readonly ILocalizationService _loc;
 
-    public AssistantController(IDargeAiService aiService)
+    public AssistantController(IDargeAiService aiService, ILocalizationService loc)
     {
         _aiService = aiService;
+        _loc = loc;
     }
 
     private int UserId
@@ -170,9 +172,14 @@ public class AssistantController : Controller
                 AiRepository.AddMessage(conversationId, "assistant", responseText);
             }
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
             TempData["Error"] = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DARGE AI Assistant Error] {ex}");
+            TempData["Error"] = _loc.Get("AiTemporarilyUnavailable");
         }
 
         return RedirectToAction("Index", new { conversationId = conversationId });
