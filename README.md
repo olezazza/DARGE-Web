@@ -43,42 +43,6 @@ DARGE-Web/
 └── Darge.Web.csproj
 ```
 
-## Getting Started
-
-### Prerequisites
-
-- .NET SDK compatible with the project
-- A configured database, if required by the application
-
-### Run Locally
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/olezazza/DARGE-Web.git
-   ```
-
-2. Navigate to the project directory:
-
-   ```bash
-   cd DARGE-Web
-   ```
-
-3. Restore dependencies:
-
-   ```bash
-   dotnet restore
-   ```
-
-4. Run the application:
-
-   ```bash
-   dotnet run
-   ```
-
-5. Open the local URL displayed in the terminal.
-
-Configure any required database connection strings and application settings before running the project.
 
 ## Project Status
 
